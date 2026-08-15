@@ -19,12 +19,14 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowForwardIos
 import androidx.compose.material.icons.filled.Cloud
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
@@ -39,16 +41,18 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.mytask.R
+import com.mytask.data.repository.UserProfile
 
 @Composable
 fun ProfileScreen(
+    profile: UserProfile,
     onBack: () -> Unit = {},
     onNotificationSettings: () -> Unit = {},
-    onBackupData: () -> Unit = {}
+    onBackupData: () -> Unit = {},
+    onEditProfile: () -> Unit = {}
 ) {
 
     Scaffold(
-
         topBar = {
             TopAppBar(
                 title = {
@@ -59,7 +63,6 @@ fun ProfileScreen(
                 }
             )
         }
-
     ) { paddingValues ->
 
         Column(
@@ -72,12 +75,6 @@ fun ProfileScreen(
 
             Spacer(Modifier.height(4.dp))
 
-            /*
-             * =========================================
-             * PROFILE HEADER
-             * =========================================
-             */
-
             Card(
                 modifier = Modifier.fillMaxWidth(),
                 shape = MaterialTheme.shapes.extraLarge,
@@ -86,9 +83,7 @@ fun ProfileScreen(
                 ),
                 border = BorderStroke(
                     1.dp,
-                    MaterialTheme.colorScheme.outline.copy(
-                        alpha = 0.45f
-                    )
+                    MaterialTheme.colorScheme.outline.copy(alpha = 0.45f)
                 )
             ) {
 
@@ -122,7 +117,7 @@ fun ProfileScreen(
                     ) {
 
                         Text(
-                            text = "Mahasiswa",
+                            text = profile.name,
                             style = MaterialTheme.typography.headlineSmall,
                             fontWeight = FontWeight.Bold
                         )
@@ -130,7 +125,7 @@ fun ProfileScreen(
                         Spacer(Modifier.height(2.dp))
 
                         Text(
-                            text = "Teknik Informatika",
+                            text = profile.program,
                             style = MaterialTheme.typography.bodyLarge,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -152,6 +147,16 @@ fun ProfileScreen(
                             )
                         }
                     }
+
+                    IconButton(
+                        onClick = onEditProfile
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Edit,
+                            contentDescription = "Edit profil",
+                            tint = MaterialTheme.colorScheme.primary
+                        )
+                    }
                 }
             }
 
@@ -161,24 +166,12 @@ fun ProfileScreen(
                 fontWeight = FontWeight.Bold
             )
 
-            /*
-             * =========================================
-             * NOTIFIKASI
-             * =========================================
-             */
-
             ProfileMenuCard(
                 icon = Icons.Default.Notifications,
                 title = "Notifikasi",
                 description = "Atur pengingat deadline dan tugas aktif.",
                 onClick = onNotificationSettings
             )
-
-            /*
-             * =========================================
-             * BACKUP
-             * =========================================
-             */
 
             ProfileMenuCard(
                 icon = Icons.Default.Cloud,
@@ -190,9 +183,7 @@ fun ProfileScreen(
             Spacer(Modifier.height(4.dp))
 
             HorizontalDivider(
-                color = MaterialTheme.colorScheme.outline.copy(
-                    alpha = 0.25f
-                )
+                color = MaterialTheme.colorScheme.outline.copy(alpha = 0.25f)
             )
 
             Text(
@@ -203,7 +194,7 @@ fun ProfileScreen(
 
             AboutRow(
                 icon = Icons.Default.Person,
-                label = "MyTask Academic Planner \ncreated by \n~ Furqon Ramadhani - Informatic Engineering"
+                label = "MyTask Academic Planner\nAcademic Planner"
             )
         }
     }
@@ -227,9 +218,7 @@ private fun ProfileMenuCard(
         ),
         border = BorderStroke(
             1.dp,
-            MaterialTheme.colorScheme.outline.copy(
-                alpha = 0.45f
-            )
+            MaterialTheme.colorScheme.outline.copy(alpha = 0.45f)
         )
     ) {
 
@@ -258,7 +247,6 @@ private fun ProfileMenuCard(
             Column(
                 modifier = Modifier.weight(1f)
             ) {
-
                 Text(
                     text = title,
                     style = MaterialTheme.typography.titleMedium,
@@ -289,14 +277,12 @@ private fun AboutRow(
     icon: androidx.compose.ui.graphics.vector.ImageVector,
     label: String
 ) {
-
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .padding(vertical = 2.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-
         Icon(
             imageVector = icon,
             contentDescription = null,
