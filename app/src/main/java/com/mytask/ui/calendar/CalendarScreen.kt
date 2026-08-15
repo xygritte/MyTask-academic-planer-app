@@ -2,11 +2,13 @@
 
 package com.mytask.ui.calendar
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -18,18 +20,22 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.ChevronLeft
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.Today
-import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -47,6 +53,7 @@ import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Date
 import java.util.Locale
+import java.util.concurrent.TimeUnit
 
 @Composable
 fun CalendarScreen(
@@ -56,116 +63,83 @@ fun CalendarScreen(
 
     val tasks by viewModel.tasks.collectAsState()
 
-    /*
-     * Bulan yang sedang ditampilkan.
-     * Default = bulan sekarang.
-     */
     var displayedMonth by remember {
         mutableStateOf(
             Calendar.getInstance().apply {
-                set(
-                    Calendar.DAY_OF_MONTH,
-                    1
-                )
+                set(Calendar.DAY_OF_MONTH, 1)
             }
         )
     }
 
-    /*
-     * Tanggal yang sedang dipilih.
-     * Default = hari ini.
-     */
     var selectedDate by remember {
         mutableStateOf(Date())
     }
 
-    val currentMonth = displayedMonth.get(
-        Calendar.MONTH
-    )
+    val currentMonth =
+        displayedMonth.get(Calendar.MONTH)
 
-    val currentYear = displayedMonth.get(
-        Calendar.YEAR
-    )
+    val currentYear =
+        displayedMonth.get(Calendar.YEAR)
 
-    /*
-     * Nama bulan + tahun
-     */
-    val monthTitle = SimpleDateFormat(
-        "MMMM yyyy",
-        Locale("id", "ID")
-    ).format(displayedMonth.time)
+    val today =
+        remember {
+            Calendar.getInstance()
+        }
 
-    /*
-     * Jumlah hari dalam bulan
-     */
+    val monthTitle =
+        SimpleDateFormat(
+            "MMMM yyyy",
+            Locale("id", "ID")
+        ).format(displayedMonth.time)
+
     val daysInMonth =
         displayedMonth.getActualMaximum(
             Calendar.DAY_OF_MONTH
         )
 
-    /*
-     * Hari pertama bulan.
-     *
-     * Calendar:
-     * 1 = Minggu
-     * 2 = Senin
-     * ...
-     * 7 = Sabtu
-     */
     val firstDayOfWeek =
         displayedMonth.get(Calendar.DAY_OF_WEEK)
 
-    /*
-     * Tanggal hari ini
-     */
-    val today = Calendar.getInstance()
-
-    /*
-     * Apakah bulan yang sedang dibuka adalah bulan sekarang?
-     */
-    val isCurrentMonth =
-        currentMonth ==
-                today.get(Calendar.MONTH) &&
-                currentYear ==
-                today.get(Calendar.YEAR)
-
-    /*
-     * Task pada tanggal terpilih
-     */
     val selectedTasks =
         tasks.filter {
-
             viewModel.isSameDay(
                 it.deadline,
                 selectedDate
             )
         }
 
+    val selectedDateLabel =
+        SimpleDateFormat(
+            "EEEE, dd MMMM yyyy",
+            Locale("id", "ID")
+        ).format(selectedDate)
+
+    val selectedDayHasOverdueTask =
+        selectedTasks.any { task ->
+            task.deadline?.let { deadline ->
+                isDateOverdue(deadline)
+            } == true && !task.isCompleted
+        }
+
     Scaffold(
 
         topBar = {
-
             TopAppBar(
 
                 title = {
-
                     Text(
                         text = "Kalender",
-                        fontWeight =
-                            FontWeight.Bold
+                        fontWeight = FontWeight.Bold
                     )
                 },
 
                 navigationIcon = {
-
                     IconButton(
                         onClick = onBack
                     ) {
-
                         Icon(
                             imageVector =
                                 Icons.Default.ArrowBack,
-
                             contentDescription =
                                 "Kembali"
                         )
@@ -173,35 +147,20 @@ fun CalendarScreen(
                 },
 
                 actions = {
-
-                    /*
-                     * Tombol kembali ke hari ini
-                     */
-
                     IconButton(
-
                         onClick = {
-
-                            val now =
-                                Calendar.getInstance()
+                            val now = Calendar.getInstance()
 
                             displayedMonth =
                                 Calendar.getInstance().apply {
-
                                     set(
                                         Calendar.YEAR,
-                                        now.get(
-                                            Calendar.YEAR
-                                        )
+                                        now.get(Calendar.YEAR)
                                     )
-
                                     set(
                                         Calendar.MONTH,
-                                        now.get(
-                                            Calendar.MONTH
-                                        )
+                                        now.get(Calendar.MONTH)
                                     )
-
                                     set(
                                         Calendar.DAY_OF_MONTH,
                                         1
@@ -212,11 +171,9 @@ fun CalendarScreen(
                                 now.time
                         }
                     ) {
-
                         Icon(
                             imageVector =
                                 Icons.Default.Today,
-
                             contentDescription =
                                 "Hari ini"
                         )
@@ -227,161 +184,229 @@ fun CalendarScreen(
 
     ) { paddingValues ->
 
-        Column(
+        androidx.compose.foundation.lazy.LazyColumn(
 
             modifier =
                 Modifier
                     .fillMaxSize()
-                    .padding(paddingValues)
-                    .padding(16.dp),
+                    .padding(paddingValues),
+
+            contentPadding = PaddingValues(
+                start = 16.dp,
+                top = 8.dp,
+                end = 16.dp,
+                bottom = 112.dp
+            ),
 
             verticalArrangement =
                 Arrangement.spacedBy(16.dp)
         ) {
 
-            /*
-             * =========================================
-             * HEADER BULAN
-             * =========================================
-             */
-
-            Row(
-
-                modifier =
-                    Modifier.fillMaxWidth(),
-
-                verticalAlignment =
-                    Alignment.CenterVertically
-            ) {
-
-                IconButton(
-
-                    onClick = {
-
-                        displayedMonth =
-                            Calendar.getInstance().apply {
-
-                                time =
-                                    displayedMonth.time
-
-                                add(
-                                    Calendar.MONTH,
-                                    -1
-                                )
-
-                                set(
-                                    Calendar.DAY_OF_MONTH,
-                                    1
-                                )
-                            }
-
-                        /*
-                         * Pilih tanggal 1
-                         * pada bulan sebelumnya
-                         */
-
+            item {
+                CalendarMonthHeader(
+                    monthTitle = monthTitle,
+                    onPrevious = {
+                        displayedMonth = shiftMonth(
+                            displayedMonth,
+                            -1
+                        )
+                        selectedDate =
+                            displayedMonth.time
+                    },
+                    onNext = {
+                        displayedMonth = shiftMonth(
+                            displayedMonth,
+                            1
+                        )
                         selectedDate =
                             displayedMonth.time
                     }
-                ) {
+                )
+            }
 
-                    Icon(
-                        imageVector =
-                            Icons.Default.ChevronLeft,
-
-                        contentDescription =
-                            "Bulan sebelumnya"
-                    )
-                }
-
-                Column(
-                    modifier =
-                        Modifier.weight(1f),
-
-                    horizontalAlignment =
-                        Alignment.CenterHorizontally
-                ) {
-
-                    Icon(
-                        imageVector =
-                            Icons.Default.CalendarMonth,
-
-                        contentDescription =
-                            null,
-
-                        tint =
-                            MaterialTheme
-                                .colorScheme
-                                .primary
-                    )
-
-                    Spacer(
-                        modifier =
-                            Modifier.height(4.dp)
-                    )
-
-                    Text(
-
-                        text =
-                            monthTitle,
-
-                        style =
-                            MaterialTheme
-                                .typography
-                                .headlineSmall,
-
-                        fontWeight =
-                            FontWeight.Bold
-                    )
-                }
-
-                IconButton(
-
-                    onClick = {
-
-                        displayedMonth =
-                            Calendar.getInstance().apply {
-
-                                time =
-                                    displayedMonth.time
-
-                                add(
-                                    Calendar.MONTH,
-                                    1
-                                )
-
-                                set(
-                                    Calendar.DAY_OF_MONTH,
-                                    1
-                                )
-                            }
-
-                        selectedDate =
-                            displayedMonth.time
+            item {
+                CalendarGrid(
+                    displayedMonth = displayedMonth,
+                    daysInMonth = daysInMonth,
+                    firstDayOfWeek = firstDayOfWeek,
+                    currentMonth = currentMonth,
+                    currentYear = currentYear,
+                    today = today,
+                    selectedDate = selectedDate,
+                    tasks = tasks,
+                    viewModel = viewModel,
+                    onDateSelected = { date ->
+                        selectedDate = date
                     }
-                ) {
+                )
+            }
 
-                    Icon(
-                        imageVector =
-                            Icons.Default.ChevronRight,
+            item {
+                SelectedDateHeader(
+                    dateLabel = selectedDateLabel,
+                    taskCount = selectedTasks.size,
+                    hasOverdueTask = selectedDayHasOverdueTask
+                )
+            }
 
-                        contentDescription =
-                            "Bulan berikutnya"
+            if (selectedTasks.isEmpty()) {
+                item {
+                    EmptyCalendarAgenda()
+                }
+            } else {
+                items(
+                    count = selectedTasks.size,
+                    key = { index ->
+                        selectedTasks[index].id
+                    }
+                ) { index ->
+                    CalendarTaskCard(
+                        task = selectedTasks[index]
                     )
                 }
             }
+        }
+    }
+}
 
-            /*
-             * =========================================
-             * HEADER HARI
-             * =========================================
-             */
+@Composable
+private fun CalendarMonthHeader(
+    monthTitle: String,
+    onPrevious: () -> Unit,
+    onNext: () -> Unit
+) {
+
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = MaterialTheme.shapes.large,
+        colors = CardDefaults.cardColors(
+            containerColor =
+                MaterialTheme.colorScheme.surface
+        ),
+        border = BorderStroke(
+            1.dp,
+            MaterialTheme.colorScheme.outline.copy(
+                alpha = 0.45f
+            )
+        )
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(
+                    horizontal = 12.dp,
+                    vertical = 8.dp
+                ),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+
+            IconButton(
+                onClick = onPrevious
+            ) {
+                Icon(
+                    imageVector =
+                        Icons.Default.ChevronLeft,
+                    contentDescription =
+                        "Bulan sebelumnya"
+                )
+            }
 
             Row(
-                modifier =
-                    Modifier.fillMaxWidth()
+                modifier = Modifier.weight(1f),
+                horizontalArrangement =
+                    Arrangement.Center,
+                verticalAlignment =
+                    Alignment.CenterVertically
             ) {
+                Surface(
+                    modifier = Modifier.size(36.dp),
+                    shape = RoundedCornerShape(10.dp),
+                    color =
+                        MaterialTheme
+                            .colorScheme
+                            .secondaryContainer
+                ) {
+                    Box(
+                        contentAlignment =
+                            Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector =
+                                Icons.Default.CalendarMonth,
+                            contentDescription = null,
+                            tint =
+                                MaterialTheme
+                                    .colorScheme
+                                    .primary
+                        )
+                    }
+                }
 
+                Spacer(
+                    Modifier.size(10.dp)
+                )
+
+                Text(
+                    text = monthTitle,
+                    style =
+                        MaterialTheme
+                            .typography
+                            .titleLarge,
+                    fontWeight = FontWeight.Bold
+                )
+            }
+
+            IconButton(
+                onClick = onNext
+            ) {
+                Icon(
+                    imageVector =
+                        Icons.Default.ChevronRight,
+                    contentDescription =
+                        "Bulan berikutnya"
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun CalendarGrid(
+    displayedMonth: Calendar,
+    daysInMonth: Int,
+    firstDayOfWeek: Int,
+    currentMonth: Int,
+    currentYear: Int,
+    today: Calendar,
+    selectedDate: Date,
+    tasks: List<TaskEntity>,
+    viewModel: CalendarViewModel,
+    onDateSelected: (Date) -> Unit
+) {
+
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = MaterialTheme.shapes.large,
+        colors = CardDefaults.cardColors(
+            containerColor =
+                MaterialTheme.colorScheme.surface
+        ),
+        border = BorderStroke(
+            1.dp,
+            MaterialTheme.colorScheme.outline.copy(
+                alpha = 0.45f
+            )
+        )
+    ) {
+        Column(
+            modifier = Modifier.padding(14.dp),
+            verticalArrangement =
+                Arrangement.spacedBy(8.dp)
+        ) {
+
+            Row(
+                modifier = Modifier.fillMaxWidth()
+            ) {
                 listOf(
                     "Min",
                     "Sen",
@@ -391,261 +416,212 @@ fun CalendarScreen(
                     "Jum",
                     "Sab"
                 ).forEach { dayName ->
-
                     Text(
-
-                        text =
-                            dayName,
-
-                        modifier =
-                            Modifier.weight(1f),
-
+                        text = dayName,
+                        modifier = Modifier.weight(1f),
                         style =
                             MaterialTheme
                                 .typography
-                                .labelMedium,
-
-                        fontWeight =
-                            FontWeight.Bold
+                                .labelSmall,
+                        color =
+                            MaterialTheme
+                                .colorScheme
+                                .onSurfaceVariant,
+                        fontWeight = FontWeight.Bold
                     )
                 }
             }
 
-            /*
-             * =========================================
-             * KALENDER
-             * =========================================
-             */
+            var day = 1
+            val totalCells =
+                ((firstDayOfWeek - 1 + daysInMonth + 6) / 7) * 7
 
-            Column(
+            repeat(totalCells / 7) { week ->
+                Row(
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    repeat(7) { column ->
 
-                verticalArrangement =
-                    Arrangement.spacedBy(8.dp)
-            ) {
+                        val cellIndex =
+                            week * 7 + column
 
-                var day = 1
+                        if (
+                            cellIndex < firstDayOfWeek - 1 ||
+                            day > daysInMonth
+                        ) {
+                            Box(
+                                modifier =
+                                    Modifier
+                                        .weight(1f)
+                                        .height(46.dp)
+                            )
+                        } else {
 
-                /*
-                 * Maksimal 6 baris.
-                 */
-                repeat(6) { week ->
+                            val currentDay = day
 
-                    Row(
+                            val dateForCell =
+                                Calendar.getInstance().apply {
+                                    set(
+                                        Calendar.YEAR,
+                                        currentYear
+                                    )
+                                    set(
+                                        Calendar.MONTH,
+                                        currentMonth
+                                    )
+                                    set(
+                                        Calendar.DAY_OF_MONTH,
+                                        currentDay
+                                    )
+                                    set(
+                                        Calendar.HOUR_OF_DAY,
+                                        12
+                                    )
+                                    set(
+                                        Calendar.MINUTE,
+                                        0
+                                    )
+                                    set(
+                                        Calendar.SECOND,
+                                        0
+                                    )
+                                    set(
+                                        Calendar.MILLISECOND,
+                                        0
+                                    )
+                                }.time
 
-                        modifier =
-                            Modifier.fillMaxWidth()
-                    ) {
-
-                        repeat(7) { column ->
-
-                            val cellIndex =
-                                week * 7 + column
-
-                            val firstPosition =
-                                firstDayOfWeek - 1
-
-                            /*
-                             * Sel kosong sebelum hari pertama
-                             */
-
-                            if (
-                                cellIndex <
-                                firstPosition ||
-                                day >
-                                daysInMonth
-                            ) {
-
-                                Box(
-
-                                    modifier =
-                                        Modifier
-                                            .weight(1f)
-                                            .size(42.dp)
+                            val isSelected =
+                                viewModel.isSameDay(
+                                    selectedDate,
+                                    dateForCell
                                 )
 
-                            } else {
+                            val isToday =
+                                viewModel.isSameDay(
+                                    today.time,
+                                    dateForCell
+                                )
 
-                                val currentDay =
-                                    day
-
-                                /*
-                                 * Buat Date dari
-                                 * tanggal yang sedang ditampilkan
-                                 */
-
-                                val dateForCell =
-                                    Calendar
-                                        .getInstance()
-                                        .apply {
-
-                                            set(
-                                                Calendar.YEAR,
-                                                currentYear
-                                            )
-
-                                            set(
-                                                Calendar.MONTH,
-                                                currentMonth
-                                            )
-
-                                            set(
-                                                Calendar.DAY_OF_MONTH,
-                                                currentDay
-                                            )
-
-                                            set(
-                                                Calendar.HOUR_OF_DAY,
-                                                12
-                                            )
-
-                                            set(
-                                                Calendar.MINUTE,
-                                                0
-                                            )
-
-                                            set(
-                                                Calendar.SECOND,
-                                                0
-                                            )
-
-                                            set(
-                                                Calendar.MILLISECOND,
-                                                0
-                                            )
-                                        }
-                                        .time
-
-                                /*
-                                 * Ada task pada tanggal ini?
-                                 */
-
-                                val hasTask =
-                                    tasks.any {
-
-                                        viewModel.isSameDay(
-                                            it.deadline,
-                                            dateForCell
-                                        )
-                                    }
-
-                                /*
-                                 * Apakah tanggal dipilih?
-                                 */
-
-                                val isSelected =
+                            val dayTasks =
+                                tasks.filter { task ->
                                     viewModel.isSameDay(
-                                        selectedDate,
+                                        task.deadline,
                                         dateForCell
                                     )
+                                }
 
-                                /*
-                                 * Apakah hari ini?
-                                 */
+                            val hasTask =
+                                dayTasks.isNotEmpty()
 
-                                val isToday =
-                                    viewModel.isSameDay(
-                                        today.time,
-                                        dateForCell
-                                    )
+                            val hasOverdueTask =
+                                dayTasks.any { task ->
+                                    task.deadline?.let {
+                                        isDateOverdue(it)
+                                    } == true &&
+                                        !task.isCompleted
+                                }
 
-                                Box(
-
-                                    modifier =
-                                        Modifier
-                                            .weight(1f)
-                                            .size(42.dp)
-                                            .clip(
-                                                CircleShape
+                            Box(
+                                modifier =
+                                    Modifier
+                                        .weight(1f)
+                                        .height(46.dp)
+                                        .clickable {
+                                            onDateSelected(
+                                                dateForCell
                                             )
-                                            .background(
-
-                                                when {
-
-                                                    isSelected ->
-                                                        MaterialTheme
-                                                            .colorScheme
-                                                            .primary
-
-                                                    else ->
-                                                        MaterialTheme
-                                                            .colorScheme
-                                                            .surface
-                                                }
-                                            )
-                                            .clickable {
-
-                                                selectedDate =
-                                                    dateForCell
-                                            },
-
-                                    contentAlignment =
-                                        Alignment.Center
+                                        },
+                                contentAlignment =
+                                    Alignment.Center
+                            ) {
+                                Column(
+                                    horizontalAlignment =
+                                        Alignment.CenterHorizontally,
+                                    verticalArrangement =
+                                        Arrangement.Center
                                 ) {
 
-                                    Column(
+                                    Box(
+                                        modifier =
+                                            Modifier
+                                                .size(36.dp)
+                                                .clip(CircleShape)
+                                                .background(
+                                                    when {
+                                                        isSelected ->
+                                                            MaterialTheme
+                                                                .colorScheme
+                                                                .primary
 
-                                        horizontalAlignment =
-                                            Alignment.CenterHorizontally
+                                                        isToday ->
+                                                            MaterialTheme
+                                                                .colorScheme
+                                                                .primaryContainer
+
+                                                        else ->
+                                                            MaterialTheme
+                                                                .colorScheme
+                                                                .surface
+                                                }
+                                                ),
+                                        contentAlignment =
+                                            Alignment.Center
                                     ) {
-
                                         Text(
-
                                             text =
-                                                currentDay
-                                                    .toString(),
-
+                                                currentDay.toString(),
                                             color =
                                                 when {
-
                                                     isSelected ->
                                                         MaterialTheme
                                                             .colorScheme
                                                             .onPrimary
+
+                                                    isToday ->
+                                                        MaterialTheme
+                                                            .colorScheme
+                                                            .onPrimaryContainer
 
                                                     else ->
                                                         MaterialTheme
                                                             .colorScheme
                                                             .onSurface
                                                 },
-
                                             fontWeight =
                                                 if (
-                                                    isToday
+                                                    isToday ||
+                                                    isSelected
                                                 ) {
                                                     FontWeight.Bold
                                                 } else {
                                                     FontWeight.Normal
                                                 }
                                         )
+                                    }
 
-                                        /*
-                                         * Titik deadline
-                                         */
+                                    Spacer(
+                                        Modifier.height(2.dp)
+                                    )
 
-                                        if (
-                                            hasTask
-                                        ) {
-
+                                    Row(
+                                        horizontalArrangement =
+                                            Arrangement.spacedBy(3.dp),
+                                        verticalAlignment =
+                                            Alignment.CenterVertically
+                                    ) {
+                                        if (hasTask) {
                                             Box(
-
                                                 modifier =
                                                     Modifier
                                                         .size(5.dp)
-                                                        .clip(
-                                                            CircleShape
-                                                        )
+                                                        .clip(CircleShape)
                                                         .background(
-
-                                                            if (
-                                                                isSelected
-                                                            ) {
-
+                                                            if (hasOverdueTask) {
                                                                 MaterialTheme
                                                                     .colorScheme
-                                                                    .onPrimary
-
+                                                                    .error
                                                             } else {
-
                                                                 MaterialTheme
                                                                     .colorScheme
                                                                     .primary
@@ -655,178 +631,448 @@ fun CalendarScreen(
                                         }
                                     }
                                 }
-
-                                day++
                             }
+
+                            day++
                         }
                     }
                 }
             }
+        }
+    }
+}
 
-            /*
-             * =========================================
-             * TANGGAL DIPILIH
-             * =========================================
-             */
-
+@Composable
+private fun SelectedDateHeader(
+    dateLabel: String,
+    taskCount: Int,
+    hasOverdueTask: Boolean
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Column(
+            modifier = Modifier.weight(1f)
+        ) {
             Text(
-
-                text =
-                    SimpleDateFormat(
-                        "EEEE, dd MMMM yyyy",
-                        Locale(
-                            "id",
-                            "ID"
-                        )
-                    ).format(
-                        selectedDate
-                    ),
-
+                text = "Agenda",
                 style =
                     MaterialTheme
                         .typography
-                        .titleMedium,
-
-                fontWeight =
-                    FontWeight.Bold
+                        .titleLarge,
+                fontWeight = FontWeight.Bold
             )
 
-            /*
-             * =========================================
-             * TASK PADA TANGGAL
-             * =========================================
-             */
-
-            if (
-                selectedTasks.isEmpty()
-            ) {
-
-                Card(
-
-                    modifier =
-                        Modifier.fillMaxWidth(),
-
-                    shape =
-                        RoundedCornerShape(16.dp)
-                ) {
-
-                    Text(
-
-                        text =
-                            "Tidak ada tugas pada tanggal ini.",
-
-                        modifier =
-                            Modifier.padding(20.dp),
-
-                        style =
-                            MaterialTheme
-                                .typography
-                                .bodyMedium
-                    )
-                }
-
-            } else {
-
-                selectedTasks.forEach { task ->
-
-                    CalendarTaskCard(
-                        task = task
-                    )
-                }
-            }
-
             Spacer(
-                modifier =
-                    Modifier.height(12.dp)
+                Modifier.height(2.dp)
+            )
+
+            Text(
+                text = dateLabel,
+                style =
+                    MaterialTheme
+                        .typography
+                        .bodySmall,
+                color =
+                    MaterialTheme
+                        .colorScheme
+                        .onSurfaceVariant
+            )
+        }
+
+        Surface(
+            shape = RoundedCornerShape(10.dp),
+            color = if (hasOverdueTask) {
+                MaterialTheme.colorScheme.errorContainer
+            } else {
+                MaterialTheme.colorScheme.secondaryContainer
+            }
+        ) {
+            Text(
+                text = "$taskCount tugas",
+                style =
+                    MaterialTheme
+                        .typography
+                        .labelMedium,
+                color = if (hasOverdueTask) {
+                    MaterialTheme.colorScheme.onErrorContainer
+                } else {
+                    MaterialTheme.colorScheme.onSecondaryContainer
+                },
+                modifier = Modifier.padding(
+                    horizontal = 10.dp,
+                    vertical = 6.dp
+                )
             )
         }
     }
 }
 
+@Composable
+private fun EmptyCalendarAgenda() {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = MaterialTheme.shapes.large,
+        colors = CardDefaults.cardColors(
+            containerColor =
+                MaterialTheme.colorScheme.surfaceVariant
+        )
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(20.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Surface(
+                modifier = Modifier.size(44.dp),
+                shape = RoundedCornerShape(12.dp),
+                color =
+                    MaterialTheme.colorScheme.surface
+            ) {
+                Box(
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector =
+                            Icons.Default.CalendarMonth,
+                        contentDescription = null,
+                        tint =
+                            MaterialTheme
+                                .colorScheme
+                                .primary
+                    )
+                }
+            }
 
-// =====================================================
-// TASK CARD
-// =====================================================
+            Spacer(
+                Modifier.height(12.dp)
+            )
+
+            Text(
+                text = "Tidak ada tugas",
+                style =
+                    MaterialTheme
+                        .typography
+                        .titleMedium,
+                fontWeight = FontWeight.SemiBold
+            )
+
+            Spacer(
+                Modifier.height(4.dp)
+            )
+
+            Text(
+                text =
+                    "Tidak ada deadline pada tanggal ini.",
+                style =
+                    MaterialTheme
+                        .typography
+                        .bodySmall,
+                color =
+                    MaterialTheme
+                        .colorScheme
+                        .onSurfaceVariant
+            )
+        }
+    }
+}
 
 @Composable
 private fun CalendarTaskCard(
     task: TaskEntity
 ) {
 
+    val overdue =
+        task.deadline?.let {
+            isDateOverdue(it)
+        } == true && !task.isCompleted
+
+    val containerColor =
+        if (overdue) {
+            MaterialTheme.colorScheme.errorContainer
+        } else {
+            MaterialTheme.colorScheme.surface
+        }
+
+    val contentColor =
+        if (overdue) {
+            MaterialTheme.colorScheme.onErrorContainer
+        } else {
+            MaterialTheme.colorScheme.onSurface
+        }
+
     Card(
-
-        modifier =
-            Modifier.fillMaxWidth(),
-
-        shape =
-            RoundedCornerShape(16.dp)
-    ) {
-
-        Column(
-
-            modifier =
-                Modifier.padding(16.dp)
-        ) {
-
-            Text(
-
-                text =
-                    task.title,
-
-                style =
-                    MaterialTheme
-                        .typography
-                        .titleMedium,
-
-                fontWeight =
-                    FontWeight.Bold
+        modifier = Modifier.fillMaxWidth(),
+        shape = MaterialTheme.shapes.large,
+        colors = CardDefaults.cardColors(
+            containerColor = containerColor
+        ),
+        border = if (overdue) {
+            BorderStroke(
+                1.dp,
+                MaterialTheme.colorScheme.error.copy(
+                    alpha = 0.45f
+                )
             )
-
-            if (
-                task.description.isNotBlank()
+        } else {
+            BorderStroke(
+                1.dp,
+                MaterialTheme.colorScheme.outline.copy(
+                    alpha = 0.45f
+                )
+            )
+        }
+    ) {
+        Column(
+            modifier = Modifier.padding(16.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
             ) {
+                Column(
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Text(
+                        text = task.title,
+                        style =
+                            MaterialTheme
+                                .typography
+                                .titleMedium,
+                        fontWeight = FontWeight.SemiBold,
+                        color = contentColor
+                    )
 
-                Spacer(
-                    modifier =
-                        Modifier.height(4.dp)
-                )
+                    if (
+                        task.description.isNotBlank()
+                    ) {
+                        Spacer(
+                            Modifier.height(3.dp)
+                        )
 
-                Text(
-                    text =
-                        task.description,
+                        Text(
+                            text = task.description,
+                            style =
+                                MaterialTheme
+                                    .typography
+                                    .bodySmall,
+                            color = if (overdue) {
+                                MaterialTheme
+                                    .colorScheme
+                                    .onErrorContainer
+                                    .copy(alpha = 0.82f)
+                            } else {
+                                MaterialTheme
+                                    .colorScheme
+                                    .onSurfaceVariant
+                            },
+                            maxLines = 2
+                        )
+                    }
+                }
 
-                    style =
-                        MaterialTheme
-                            .typography
-                            .bodyMedium
-                )
+                Surface(
+                    shape = RoundedCornerShape(8.dp),
+                    color = if (overdue) {
+                        MaterialTheme.colorScheme.error
+                    } else {
+                        MaterialTheme.colorScheme.secondaryContainer
+                    }
+                ) {
+                    Text(
+                        text = if (task.isCompleted) {
+                            "Selesai"
+                        } else if (overdue) {
+                            "Terlambat"
+                        } else {
+                            "Aktif"
+                        },
+                        style =
+                            MaterialTheme
+                                .typography
+                                .labelMedium,
+                        fontWeight = FontWeight.SemiBold,
+                        color = if (overdue) {
+                            MaterialTheme.colorScheme.onError
+                        } else {
+                            MaterialTheme
+                                .colorScheme
+                                .onSecondaryContainer
+                        },
+                        modifier = Modifier.padding(
+                            horizontal = 8.dp,
+                            vertical = 5.dp
+                        )
+                    )
+                }
             }
 
             Spacer(
-                modifier =
-                    Modifier.height(8.dp)
+                Modifier.height(10.dp)
             )
 
-            Text(
+            HorizontalDivider(
+                color = if (overdue) {
+                    MaterialTheme
+                        .colorScheme
+                        .onErrorContainer
+                        .copy(alpha = 0.15f)
+                } else {
+                    MaterialTheme
+                        .colorScheme
+                        .outline
+                        .copy(alpha = 0.20f)
+                }
+            )
 
-                text =
-                    when (task.priority) {
+            Spacer(
+                Modifier.height(10.dp)
+            )
 
-                        3 ->
-                            "Prioritas Tinggi"
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = when {
+                        task.isCompleted ->
+                            "Tugas selesai"
 
-                        2 ->
-                            "Prioritas Sedang"
+                        task.deadline == null ->
+                            "Tanpa deadline"
+
+                        overdue ->
+                            "Terlambat ${daysOverdue(task.deadline)} hari"
 
                         else ->
-                            "Prioritas Rendah"
+                            relativeDeadline(task.deadline)
                     },
+                    style =
+                        MaterialTheme
+                            .typography
+                            .labelMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    color = if (overdue) {
+                        MaterialTheme.colorScheme.error
+                    } else {
+                        MaterialTheme.colorScheme.primary
+                    },
+                    modifier = Modifier.weight(1f)
+                )
 
-                style =
-                    MaterialTheme
-                        .typography
-                        .labelMedium
-            )
+                Text(
+                    text = when (task.priority) {
+                        3 -> "Prioritas Tinggi"
+                        2 -> "Prioritas Sedang"
+                        else -> "Prioritas Rendah"
+                    },
+                    style =
+                        MaterialTheme
+                            .typography
+                            .labelSmall,
+                    color = if (overdue) {
+                        MaterialTheme
+                            .colorScheme
+                            .onErrorContainer
+                            .copy(alpha = 0.78f)
+                    } else {
+                        MaterialTheme
+                            .colorScheme
+                            .onSurfaceVariant
+                    }
+                )
+            }
         }
+    }
+}
+
+private fun shiftMonth(
+    source: Calendar,
+    amount: Int
+): Calendar {
+    return Calendar.getInstance().apply {
+        time = source.time
+        add(Calendar.MONTH, amount)
+        set(Calendar.DAY_OF_MONTH, 1)
+    }
+}
+
+private fun isDateOverdue(
+    date: Date
+): Boolean {
+    val today = Calendar.getInstance().apply {
+        set(Calendar.HOUR_OF_DAY, 0)
+        set(Calendar.MINUTE, 0)
+        set(Calendar.SECOND, 0)
+        set(Calendar.MILLISECOND, 0)
+    }
+
+    val target = Calendar.getInstance().apply {
+        time = date
+        set(Calendar.HOUR_OF_DAY, 0)
+        set(Calendar.MINUTE, 0)
+        set(Calendar.SECOND, 0)
+        set(Calendar.MILLISECOND, 0)
+    }
+
+    return target.timeInMillis < today.timeInMillis
+}
+
+private fun daysOverdue(
+    date: Date?
+): Long {
+    if (date == null) return 0L
+
+    val today = Calendar.getInstance().apply {
+        set(Calendar.HOUR_OF_DAY, 0)
+        set(Calendar.MINUTE, 0)
+        set(Calendar.SECOND, 0)
+        set(Calendar.MILLISECOND, 0)
+    }
+
+    val target = Calendar.getInstance().apply {
+        time = date
+        set(Calendar.HOUR_OF_DAY, 0)
+        set(Calendar.MINUTE, 0)
+        set(Calendar.SECOND, 0)
+        set(Calendar.MILLISECOND, 0)
+    }
+
+    return TimeUnit.MILLISECONDS.toDays(
+        today.timeInMillis - target.timeInMillis
+    ).coerceAtLeast(1L)
+}
+
+private fun relativeDeadline(
+    date: Date?
+): String {
+    if (date == null) return "Tanpa deadline"
+
+    val today = Calendar.getInstance().apply {
+        set(Calendar.HOUR_OF_DAY, 0)
+        set(Calendar.MINUTE, 0)
+        set(Calendar.SECOND, 0)
+        set(Calendar.MILLISECOND, 0)
+    }
+
+    val target = Calendar.getInstance().apply {
+        time = date
+        set(Calendar.HOUR_OF_DAY, 0)
+        set(Calendar.MINUTE, 0)
+        set(Calendar.SECOND, 0)
+        set(Calendar.MILLISECOND, 0)
+    }
+
+    val days = TimeUnit.MILLISECONDS.toDays(
+        target.timeInMillis - today.timeInMillis
+    )
+
+    return when {
+        days == 0L -> "Hari ini"
+        days == 1L -> "1 hari lagi"
+        days > 1L -> "$days hari lagi"
+        else -> "Terlambat ${-days} hari"
     }
 }
