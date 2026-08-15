@@ -26,6 +26,11 @@ object NotificationHelper {
     private const val ACTIVE_TASKS_NOTIFICATION_ID =
         4000
 
+
+    // =================================================
+    // CHANNEL
+    // =================================================
+
     fun createChannels(
         context: Context
     ) {
@@ -34,6 +39,7 @@ object NotificationHelper {
             Build.VERSION.SDK_INT <
             Build.VERSION_CODES.O
         ) {
+
             return
         }
 
@@ -44,9 +50,14 @@ object NotificationHelper {
 
         val taskChannel =
             NotificationChannel(
+
                 TASK_CHANNEL_ID,
+
                 "Pengingat Tugas",
-                NotificationManager.IMPORTANCE_HIGH
+
+                NotificationManager
+                    .IMPORTANCE_HIGH
+
             ).apply {
 
                 description =
@@ -55,9 +66,14 @@ object NotificationHelper {
 
         val scheduleChannel =
             NotificationChannel(
+
                 SCHEDULE_CHANNEL_ID,
+
                 "Jadwal Kuliah",
-                NotificationManager.IMPORTANCE_HIGH
+
+                NotificationManager
+                    .IMPORTANCE_HIGH
+
             ).apply {
 
                 description =
@@ -73,9 +89,11 @@ object NotificationHelper {
         )
     }
 
+
     // =================================================
-    // TUGAS AKTIF - SATU NOTIFIKASI
-    // BISA DI-SWIPE
+    // TUGAS AKTIF
+    // SATU NOTIFIKASI
+    // BOLEH DI-SWIPE
     // =================================================
 
     fun showActiveTasksNotification(
@@ -83,16 +101,24 @@ object NotificationHelper {
         message: String
     ) {
 
-        if (!canNotify(context)) {
+        if (
+            !canNotify(context)
+        ) {
+
             return
         }
 
-        createChannels(context)
+        createChannels(
+            context
+        )
 
         val intent =
             Intent(
+
                 context,
+
                 MainActivity::class.java
+
             ).apply {
 
                 flags =
@@ -102,9 +128,13 @@ object NotificationHelper {
 
         val pendingIntent =
             PendingIntent.getActivity(
+
                 context,
+
                 ACTIVE_TASKS_NOTIFICATION_ID,
+
                 intent,
+
                 PendingIntent.FLAG_UPDATE_CURRENT or
                         PendingIntent.FLAG_IMMUTABLE
             )
@@ -112,45 +142,69 @@ object NotificationHelper {
         val notification =
             NotificationCompat
                 .Builder(
+
                     context,
+
                     TASK_CHANNEL_ID
                 )
+
                 .setSmallIcon(
                     R.drawable.ic_notification
                 )
+
                 .setContentTitle(
                     "Tugas Aktif"
                 )
+
                 .setContentText(
                     message
                 )
+
                 .setStyle(
+
                     NotificationCompat
                         .BigTextStyle()
-                        .bigText(message)
+                        .bigText(
+                            message
+                        )
                 )
+
                 .setPriority(
-                    NotificationCompat.PRIORITY_HIGH
+                    NotificationCompat
+                        .PRIORITY_HIGH
                 )
+
                 .setContentIntent(
                     pendingIntent
                 )
 
-                // BOLEH DI-SWIPE
-                .setAutoCancel(true)
-                .setOngoing(false)
+                /*
+                 * BOLEH DI-SWIPE.
+                 */
+                .setAutoCancel(
+                    true
+                )
 
-                .setOnlyAlertOnce(true)
+                .setOngoing(
+                    false
+                )
+
+                .setOnlyAlertOnce(
+                    true
+                )
 
                 .build()
 
         NotificationManagerCompat
             .from(context)
             .notify(
+
                 ACTIVE_TASKS_NOTIFICATION_ID,
+
                 notification
             )
     }
+
 
     fun cancelActiveTasksNotification(
         context: Context
@@ -163,9 +217,10 @@ object NotificationHelper {
             )
     }
 
+
     // =================================================
-    // TUGAS HARI INI
-    // PERMANEN SAMPAI SELESAI
+    // TUGAS DEADLINE BIASA
+    // PERMANEN
     // =================================================
 
     fun showTaskNotification(
@@ -175,19 +230,90 @@ object NotificationHelper {
         message: String
     ) {
 
-        if (!canNotify(context)) {
+        showTaskNotificationInternal(
+
+            context = context,
+
+            taskId = taskId,
+
+            title = title,
+
+            message = message,
+
+            overdue = false
+        )
+    }
+
+
+    // =================================================
+    // TUGAS TERLAMBAT
+    // PERMANEN
+    // TAMPILAN KHUSUS
+    // =================================================
+
+    fun showOverdueTaskNotification(
+        context: Context,
+        taskId: String,
+        title: String,
+        message: String
+    ) {
+
+        showTaskNotificationInternal(
+
+            context = context,
+
+            taskId = taskId,
+
+            title = title,
+
+            message = message,
+
+            overdue = true
+        )
+    }
+
+
+    // =================================================
+    // INTERNAL TASK NOTIFICATION
+    // =================================================
+
+    private fun showTaskNotificationInternal(
+
+        context: Context,
+
+        taskId: String,
+
+        title: String,
+
+        message: String,
+
+        overdue: Boolean
+
+    ) {
+
+        if (
+            !canNotify(context)
+        ) {
+
             return
         }
 
-        createChannels(context)
+        createChannels(
+            context
+        )
 
         val notificationId =
-            taskNotificationId(taskId)
+            taskNotificationId(
+                taskId
+            )
 
         val intent =
             Intent(
+
                 context,
+
                 MainActivity::class.java
+
             ).apply {
 
                 flags =
@@ -197,57 +323,119 @@ object NotificationHelper {
 
         val pendingIntent =
             PendingIntent.getActivity(
+
                 context,
+
                 notificationId,
+
                 intent,
+
                 PendingIntent.FLAG_UPDATE_CURRENT or
                         PendingIntent.FLAG_IMMUTABLE
             )
 
-        val notification =
+        val builder =
             NotificationCompat
                 .Builder(
+
                     context,
+
                     TASK_CHANNEL_ID
                 )
+
                 .setSmallIcon(
                     R.drawable.ic_notification
                 )
+
                 .setContentTitle(
                     title
                 )
+
                 .setContentText(
                     message
                 )
+
                 .setStyle(
+
                     NotificationCompat
                         .BigTextStyle()
-                        .bigText(message)
+                        .bigText(
+                            message
+                        )
                 )
-                .setPriority(
-                    NotificationCompat.PRIORITY_HIGH
-                )
+
                 .setContentIntent(
                     pendingIntent
                 )
 
-                // TIDAK HILANG SAAT DITAP
-                .setAutoCancel(false)
+                /*
+                 * Notifikasi deadline selalu
+                 * dianggap high priority.
+                 */
+                .setPriority(
+                    NotificationCompat
+                        .PRIORITY_HIGH
+                )
 
-                // TIDAK BISA DI-SWIPE
-                .setOngoing(true)
+                /*
+                 * Tidak hilang saat ditap.
+                 */
+                .setAutoCancel(
+                    false
+                )
 
-                .setOnlyAlertOnce(true)
+                /*
+                 * Tidak bisa di-swipe.
+                 */
+                .setOngoing(
+                    true
+                )
 
-                .build()
+                /*
+                 * Jangan bunyi berulang kali
+                 * setiap Worker berjalan.
+                 */
+                .setOnlyAlertOnce(
+                    true
+                )
+
+        /*
+         * Tampilan tambahan untuk overdue.
+         *
+         * Android akan tetap menggunakan channel
+         * yang sama, tetapi title/message berbeda.
+         */
+        if (
+            overdue
+        ) {
+
+            builder.setCategory(
+                NotificationCompat
+                    .CATEGORY_ALARM
+            )
+
+        } else {
+
+            builder.setCategory(
+                NotificationCompat
+                    .CATEGORY_REMINDER
+            )
+        }
 
         NotificationManagerCompat
             .from(context)
             .notify(
+
                 notificationId,
-                notification
+
+                builder.build()
             )
     }
+
+
+    // =================================================
+    // CANCEL TASK
+    // =================================================
 
     fun cancelTaskNotification(
         context: Context,
@@ -257,15 +445,18 @@ object NotificationHelper {
         NotificationManagerCompat
             .from(context)
             .cancel(
+
                 taskNotificationId(
                     taskId
                 )
             )
     }
 
+
     // =================================================
     // JADWAL KULIAH
-    // TIDAK DIUBAH
+    // SEMI PERMANEN
+    // TAP → HILANG
     // =================================================
 
     fun showScheduleNotification(
@@ -275,11 +466,16 @@ object NotificationHelper {
         message: String
     ) {
 
-        if (!canNotify(context)) {
+        if (
+            !canNotify(context)
+        ) {
+
             return
         }
 
-        createChannels(context)
+        createChannels(
+            context
+        )
 
         val notificationId =
             scheduleNotificationId(
@@ -288,8 +484,11 @@ object NotificationHelper {
 
         val intent =
             Intent(
+
                 context,
+
                 ScheduleNotificationReceiver::class.java
+
             ).apply {
 
                 putExtra(
@@ -300,9 +499,13 @@ object NotificationHelper {
 
         val pendingIntent =
             PendingIntent.getBroadcast(
+
                 context,
+
                 notificationId,
+
                 intent,
+
                 PendingIntent.FLAG_UPDATE_CURRENT or
                         PendingIntent.FLAG_IMMUTABLE
             )
@@ -310,40 +513,66 @@ object NotificationHelper {
         val notification =
             NotificationCompat
                 .Builder(
+
                     context,
+
                     SCHEDULE_CHANNEL_ID
                 )
+
                 .setSmallIcon(
                     R.drawable.ic_notification
                 )
+
                 .setContentTitle(
                     title
                 )
+
                 .setContentText(
                     message
                 )
+
                 .setStyle(
+
                     NotificationCompat
                         .BigTextStyle()
-                        .bigText(message)
+                        .bigText(
+                            message
+                        )
                 )
+
                 .setPriority(
-                    NotificationCompat.PRIORITY_HIGH
+                    NotificationCompat
+                        .PRIORITY_HIGH
                 )
+
                 .setContentIntent(
                     pendingIntent
                 )
-                .setAutoCancel(false)
-                .setOngoing(true)
+
+                /*
+                 * Jadwal tetap mengikuti
+                 * perilaku sebelumnya.
+                 */
+                .setAutoCancel(
+                    false
+                )
+
+                .setOngoing(
+                    true
+                )
+
                 .build()
 
         NotificationManagerCompat
             .from(context)
             .notify(
+
                 notificationId,
+
                 notification
             )
     }
+
 
     // =================================================
     // ID
@@ -358,12 +587,18 @@ object NotificationHelper {
                 taskId.hashCode()
             )
 
-        return if (hash == 0) {
+        return if (
+            hash == 0
+        ) {
+
             2000
+
         } else {
+
             hash
         }
     }
+
 
     private fun scheduleNotificationId(
         scheduleId: String
@@ -374,12 +609,18 @@ object NotificationHelper {
                 scheduleId.hashCode()
             )
 
-        return if (hash == 0) {
+        return if (
+            hash == 0
+        ) {
+
             3000
+
         } else {
+
             hash
         }
     }
+
 
     // =================================================
     // PERMISSION
@@ -396,11 +637,17 @@ object NotificationHelper {
 
             if (
                 ContextCompat.checkSelfPermission(
+
                     context,
-                    Manifest.permission.POST_NOTIFICATIONS
+
+                    Manifest.permission
+                        .POST_NOTIFICATIONS
+
                 ) !=
                 PackageManager.PERMISSION_GRANTED
+
             ) {
+
                 return false
             }
         }

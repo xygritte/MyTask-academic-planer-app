@@ -8,10 +8,8 @@ import com.mytask.data.local.MyTaskDatabase
 import com.mytask.data.local.entity.TaskEntity
 import com.mytask.data.repository.SettingsRepository
 import kotlinx.coroutines.flow.first
-import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Date
-import java.util.Locale
 import java.util.concurrent.TimeUnit
 
 class DailyReminderWorker(
@@ -74,9 +72,6 @@ class DailyReminderWorker(
              * ==========================================
              * 1. TUGAS AKTIF
              * ==========================================
-             *
-             * Bisa diaktifkan / dinonaktifkan
-             * dari Profile > Notifikasi.
              */
 
             if (
@@ -97,25 +92,8 @@ class DailyReminderWorker(
 
             /*
              * ==========================================
-             * 2. PENGINGAT DEADLINE
+             * 2. DEADLINE TASK
              * ==========================================
-             *
-             * Aturan:
-             *
-             * reminderDays = 0
-             * → mulai pada hari deadline
-             *
-             * reminderDays = 1
-             * → mulai H-1
-             *
-             * reminderDays = 3
-             * → mulai H-3
-             *
-             * dan seterusnya.
-             *
-             * Setelah melewati deadline,
-             * notifikasi tetap ada selama
-             * tugas belum selesai.
              */
 
             checkDeadlineTasks(
@@ -127,8 +105,6 @@ class DailyReminderWorker(
              * ==========================================
              * 3. JADWAL KULIAH
              * ==========================================
-             *
-             * Logikanya tetap seperti sebelumnya.
              */
 
             checkTodaySchedules(
@@ -137,7 +113,7 @@ class DailyReminderWorker(
 
             /*
              * ==========================================
-             * JADWAL MIDNIGHT BERIKUTNYA
+             * MIDNIGHT BERIKUTNYA
              * ==========================================
              */
 
@@ -162,9 +138,7 @@ class DailyReminderWorker(
 
 
     // =================================================
-    // 1. SEMUA TUGAS AKTIF
-    // SATU NOTIFIKASI
-    // BISA DI-SWIPE
+    // TUGAS AKTIF
     // =================================================
 
     private fun checkActiveTasks(
@@ -191,15 +165,18 @@ class DailyReminderWorker(
         val today =
             Calendar.getInstance()
 
+        val visibleTasks =
+            activeTasks
+                .sortedBy {
+                    it.deadline
+                        ?: Date(Long.MAX_VALUE)
+                }
+                .take(4)
+
         val message =
             buildString {
 
-                activeTasks
-                    .sortedBy {
-                        it.deadline
-                            ?: Date(Long.MAX_VALUE)
-                    }
-                    .take(4)
+                visibleTasks
                     .forEachIndexed {
                             index,
                             task ->
@@ -207,15 +184,10 @@ class DailyReminderWorker(
                         append("• ")
                         append(task.title)
 
-                        val deadline =
-                            task.deadline
-
-                        if (
-                            deadline != null
-                        ) {
+                        task.deadline?.let { deadline ->
 
                             append(
-                                " — deadline "
+                                " — "
                             )
 
                             append(
@@ -228,9 +200,7 @@ class DailyReminderWorker(
 
                         if (
                             index <
-                            activeTasks
-                                .take(4)
-                                .lastIndex
+                            visibleTasks.lastIndex
                         ) {
 
                             append("\n")
@@ -238,11 +208,15 @@ class DailyReminderWorker(
                     }
 
                 if (
-                    activeTasks.size > 4
+                    activeTasks.size >
+                    visibleTasks.size
                 ) {
 
                     append(
-                        "\n+ ${activeTasks.size - 4} tugas lainnya"
+                        "\n+ ${
+                            activeTasks.size -
+                                    visibleTasks.size
+                        } tugas lainnya"
                     )
                 }
             }
@@ -256,11 +230,15 @@ class DailyReminderWorker(
 
 
     // =================================================
-    // 2. PENGINGAT DEADLINE
+    // DEADLINE
+    // =================================================
     //
-    // MULAI H-X
-    // TETAP ADA SETELAH DEADLINE
-    // SAMPAI TUGAS SELESAI
+    // Mulai H-X sesuai setting.
+    //
+    // Setelah deadline:
+    // tetap permanen sampai task selesai.
+    //
+    // Overdue memakai tampilan berbeda.
     // =================================================
 
     private fun checkDeadlineTasks(
@@ -304,28 +282,11 @@ class DailyReminderWorker(
                 )
             }
 
-        /*
-         * Semua task memiliki notification state
-         * yang perlu kita sinkronkan.
-         *
-         * Task:
-         *
-         * - selesai
-         * - tidak punya deadline
-         * - deadline masih terlalu jauh
-         *
-         * harus dipastikan tidak meninggalkan
-         * notifikasi permanen lama.
-         */
-
         tasks.forEach { task ->
-
-            val deadline =
-                task.deadline
 
             /*
              * ==========================================
-             * TASK SUDAH SELESAI
+             * SELESAI
              * ==========================================
              */
 
@@ -344,22 +305,23 @@ class DailyReminderWorker(
 
             /*
              * ==========================================
-             * TASK TIDAK MEMILIKI DEADLINE
+             * TANPA DEADLINE
              * ==========================================
              */
 
-            if (
-                deadline == null
-            ) {
+            val deadline =
+                task.deadline
 
-                NotificationHelper
-                    .cancelTaskNotification(
-                        applicationContext,
-                        task.id.toString()
-                    )
+                    ?: run {
 
-                return@forEach
-            }
+                        NotificationHelper
+                            .cancelTaskNotification(
+                                applicationContext,
+                                task.id.toString()
+                            )
+
+                        return@forEach
+                    }
 
             /*
              * ==========================================
@@ -396,75 +358,237 @@ class DailyReminderWorker(
 
             /*
              * ==========================================
-             * APAKAH SUDAH MASUK WINDOW REMINDER?
+             * SUDAH TERLAMBAT?
              * ==========================================
-             *
-             * Contoh:
-             *
-             * today = 15
-             * reminderDays = 3
-             *
-             * reminderStart = 18
-             *
-             * deadline:
-             *
-             * 17 → belum tampil
-             * 18 → tampil
-             * 19 → tampil
-             * 20 → tampil
-             * 10 → tampil karena sudah lewat deadline
+             */
+
+            val isOverdue =
+                deadlineDay.timeInMillis <
+                        today.timeInMillis
+
+            /*
+             * ==========================================
+             * SUDAH MASUK WINDOW PENGINGAT?
+             * ==========================================
              */
 
             val shouldShow =
                 deadlineDay.timeInMillis <=
                         reminderStart.timeInMillis
 
-            if (
-                shouldShow
-            ) {
-
-                val detail =
-                    buildDeadlineTaskDetail(
-                        task
-                    )
-
-                NotificationHelper
-                    .showTaskNotification(
-
-                        applicationContext,
-
-                        task.id.toString(),
-
-                        "📝 ${task.title}",
-
-                        detail
-                    )
-
-            } else {
+            if (!shouldShow) {
 
                 /*
                  * Deadline masih terlalu jauh.
-                 *
-                 * Hapus notifikasi lama jika sebelumnya
-                 * user pernah menggunakan reminderDays
-                 * yang lebih besar.
                  */
-
                 NotificationHelper
                     .cancelTaskNotification(
                         applicationContext,
                         task.id.toString()
                     )
+
+                return@forEach
             }
+
+            /*
+             * ==========================================
+             * OVERDUE
+             * ==========================================
+             */
+
+            if (
+                isOverdue
+            ) {
+
+                val overdueDays =
+                    getOverdueDays(
+                        today,
+                        deadlineDay
+                    )
+
+                val detail =
+                    buildOverdueTaskDetail(
+                        task = task,
+                        overdueDays = overdueDays
+                    )
+
+                NotificationHelper
+                    .showOverdueTaskNotification(
+
+                        applicationContext,
+
+                        task.id.toString(),
+
+                        "⚠️ ${task.title}",
+
+                        detail
+                    )
+
+                return@forEach
+            }
+
+            /*
+             * ==========================================
+             * BELUM OVERDUE
+             * ==========================================
+             */
+
+            val detail =
+                buildUpcomingTaskDetail(
+                    task
+                )
+
+            NotificationHelper
+                .showTaskNotification(
+
+                    applicationContext,
+
+                    task.id.toString(),
+
+                    "📝 ${task.title}",
+
+                    detail
+                )
         }
     }
 
 
     // =================================================
-    // DETAIL NOTIFIKASI DEADLINE
+    // DETAIL TUGAS YANG BELUM TERLAMBAT
     // =================================================
 
-    private fun buildDeadlineTaskDetail(
+    private fun buildUpcomingTaskDetail(
+        task: TaskEntity
+    ): String {
+
+        val deadline =
+            task.deadline
+                ?: return buildBasicTaskDetail(
+                    task
+                )
+
+        val status =
+            getDeadlineText(
+                Calendar.getInstance(),
+                deadline
+            )
+
+        return buildString {
+
+            task.description
+                .takeIf {
+                    it.isNotBlank()
+                }
+                ?.let {
+
+                    append(it)
+
+                    append(
+                        "\n\n"
+                    )
+                }
+
+            append(
+                "Deadline: "
+            )
+
+            append(
+                status
+            )
+
+            append(
+                "\n"
+            )
+
+            append(
+                "Prioritas: "
+            )
+
+            append(
+                getPriorityText(
+                    task.priority
+                )
+            )
+
+            append(
+                "\n\nTap untuk membuka tugas."
+            )
+        }
+    }
+
+
+    // =================================================
+    // DETAIL TUGAS TERLAMBAT
+    // =================================================
+
+    private fun buildOverdueTaskDetail(
+        task: TaskEntity,
+        overdueDays: Long
+    ): String {
+
+        return buildString {
+
+            append(
+                "⚠️ TERLAMBAT"
+            )
+
+            append(
+                "\n"
+            )
+
+            append(
+                "Sudah lewat "
+            )
+
+            append(
+                overdueDays
+            )
+
+            append(
+                if (
+                    overdueDays == 1L
+                ) {
+                    " hari"
+                } else {
+                    " hari"
+                }
+            )
+
+            task.description
+                .takeIf {
+                    it.isNotBlank()
+                }
+                ?.let {
+
+                    append(
+                        "\n\n"
+                    )
+
+                    append(it)
+                }
+
+            append(
+                "\n\nPrioritas: "
+            )
+
+            append(
+                getPriorityText(
+                    task.priority
+                )
+            )
+
+            append(
+                "\n\nTap untuk membuka tugas."
+            )
+        }
+    }
+
+
+    // =================================================
+    // TASK TANPA DETAIL
+    // =================================================
+
+    private fun buildBasicTaskDetail(
         task: TaskEntity
     ): String {
 
@@ -483,66 +607,14 @@ class DailyReminderWorker(
                     )
                 }
 
-            task.deadline?.let {
-
-                val formatter =
-                    SimpleDateFormat(
-                        "dd MMM yyyy • HH:mm",
-                        Locale(
-                            "id",
-                            "ID"
-                        )
-                    )
-
-                append(
-                    "Deadline: "
-                )
-
-                append(
-                    formatter.format(
-                        it
-                    )
-                )
-
-                append(
-                    "\n"
-                )
-
-                append(
-                    "Status: "
-                )
-
-                append(
-                    getDeadlineText(
-                        Calendar
-                            .getInstance(),
-                        it
-                    )
-                )
-            }
-
             append(
-                "\n\nPrioritas: "
+                "Prioritas: "
             )
 
             append(
-
-                when (
+                getPriorityText(
                     task.priority
-                ) {
-
-                    1 ->
-                        "Tinggi"
-
-                    2 ->
-                        "Sedang"
-
-                    3 ->
-                        "Rendah"
-
-                    else ->
-                        "Normal"
-                }
+                )
             )
 
             append(
@@ -553,8 +625,7 @@ class DailyReminderWorker(
 
 
     // =================================================
-    // 3. JADWAL KULIAH
-    // LOGIKA TETAP
+    // JADWAL
     // =================================================
 
     private suspend fun checkTodaySchedules(
@@ -579,6 +650,7 @@ class DailyReminderWorker(
         if (
             schedules.isEmpty()
         ) {
+
             return
         }
 
@@ -609,7 +681,8 @@ class DailyReminderWorker(
                     buildString {
 
                         append(
-                            "${schedule.startTime} - ${schedule.endTime}"
+                            "${schedule.startTime} - " +
+                                    schedule.endTime
                         )
 
                         append(
@@ -648,7 +721,7 @@ class DailyReminderWorker(
 
 
     // =================================================
-    // DEADLINE TEXT
+    // RELATIVE DEADLINE
     // =================================================
 
     private fun getDeadlineText(
@@ -745,6 +818,54 @@ class DailyReminderWorker(
 
                 "$days hari lagi"
             }
+        }
+    }
+
+
+    // =================================================
+    // JUMLAH HARI TERLAMBAT
+    // =================================================
+
+    private fun getOverdueDays(
+        today: Calendar,
+        deadline: Calendar
+    ): Long {
+
+        val difference =
+            today.timeInMillis -
+                    deadline.timeInMillis
+
+        return TimeUnit.MILLISECONDS
+            .toDays(
+                difference
+            )
+            .coerceAtLeast(
+                1L
+            )
+    }
+
+
+    // =================================================
+    // PRIORITY
+    // =================================================
+
+    private fun getPriorityText(
+        priority: Int
+    ): String {
+
+        return when (priority) {
+
+            1 ->
+                "Tinggi"
+
+            2 ->
+                "Sedang"
+
+            3 ->
+                "Rendah"
+
+            else ->
+                "Normal"
         }
     }
 }
