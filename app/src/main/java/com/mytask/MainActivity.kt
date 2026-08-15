@@ -57,11 +57,14 @@ import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.collectLatest
-import kotlinx.coroutines.flow.first
 import androidx.compose.runtime.produceState
+import javax.inject.Inject
 
 @AndroidEntryPoint
 class MainActivity : ComponentActivity() {
+
+    @Inject
+    lateinit var templateDataImporter: TemplateDataImporter
 
     private val notificationPermissionLauncher =
         registerForActivityResult(
@@ -79,7 +82,10 @@ class MainActivity : ComponentActivity() {
 
         setContent {
             MyTaskTheme {
-                MyTaskApp()
+                MyTaskApp(
+                    templateDataImporter =
+                        templateDataImporter
+                )
             }
         }
     }
@@ -102,7 +108,9 @@ class MainActivity : ComponentActivity() {
 }
 
 @Composable
-private fun MyTaskApp() {
+private fun MyTaskApp(
+    templateDataImporter: TemplateDataImporter
+) {
 
     val context = LocalContext.current.applicationContext
 
@@ -112,10 +120,6 @@ private fun MyTaskApp() {
 
     val templatePreferenceRepository = remember(context) {
         TemplatePreferenceRepository(context)
-    }
-
-    val templateDataImporter = remember(context) {
-        TemplateDataImporter(context)
     }
 
     val profileState = produceState<Pair<Boolean, UserProfile?>>(
