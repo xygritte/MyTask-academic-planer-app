@@ -3,31 +3,63 @@ package com.mytask.navigation
 sealed class Screen(
     val route: String
 ) {
+
     data object Dashboard :
-        Screen("dashboard")
+        Screen(
+            "dashboard"
+        )
+
 
     data object Task :
-        Screen("task")
+        Screen(
+            "task"
+        )
+
 
     data object AddTask :
-        Screen("add_task?taskId={taskId}")
+        Screen(
+            "add_task?taskId={taskId}"
+        )
+
 
     data object Schedule :
-        Screen("schedule")
+        Screen(
+            "schedule"
+        )
+
 
     data object Calendar :
-        Screen("calendar")
+        Screen(
+            "calendar"
+        )
+
 
     data object Course :
-        Screen("course")
+        Screen(
+            "course"
+        )
+
 
     data object AddCourse :
-        Screen("add_course?courseId={courseId}")
+        Screen(
+            "add_course?courseId={courseId}"
+        )
+
 
     data object Profile :
-        Screen("profile")
+        Screen(
+            "profile"
+        )
 
 
     data object NotificationSettings :
-        Screen("notification_settings")
+        Screen(
+            "notification_settings"
+        )
+
+
+    data object Backup :
+        Screen(
+            "backup"
+        )
 }

@@ -8,7 +8,6 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.pager.HorizontalPager
@@ -79,6 +78,7 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+
     private fun requestNotificationPermission() {
 
         if (
@@ -88,16 +88,23 @@ class MainActivity : ComponentActivity() {
 
             val granted =
                 ContextCompat.checkSelfPermission(
+
                     this,
-                    Manifest.permission.POST_NOTIFICATIONS
+
+                    Manifest.permission
+                        .POST_NOTIFICATIONS
+
                 ) ==
-                        PackageManager.PERMISSION_GRANTED
+                        PackageManager
+                            .PERMISSION_GRANTED
 
             if (!granted) {
 
                 notificationPermissionLauncher
                     .launch(
-                        Manifest.permission.POST_NOTIFICATIONS
+
+                        Manifest.permission
+                            .POST_NOTIFICATIONS
                     )
             }
         }
@@ -114,26 +121,19 @@ class MainActivity : ComponentActivity() {
 @Composable
 private fun MyTaskApp() {
 
-    /*
-     * Loading hanya ditampilkan pada
-     * saat startup awal.
-     *
-     * UI utama belum dibuat selama loading.
-     */
     var isLoading by remember {
-        mutableStateOf(true)
+
+        mutableStateOf(
+            true
+        )
     }
 
     LaunchedEffect(Unit) {
 
-        /*
-         * Beri waktu Android/Compose melakukan
-         * startup tanpa langsung menampilkan
-         * UI utama yang masih berat.
-         */
         delay(800)
 
-        isLoading = false
+        isLoading =
+            false
     }
 
     if (isLoading) {
@@ -143,10 +143,6 @@ private fun MyTaskApp() {
         return
     }
 
-    /*
-     * Setelah loading selesai,
-     * baru buat seluruh aplikasi utama.
-     */
     MyTaskMainContent()
 }
 
@@ -166,21 +162,19 @@ private fun MyTaskMainContent() {
     val scope =
         rememberCoroutineScope()
 
+
     /*
-     * =================================================
+     * ================================================
      * PAGER
-     * =================================================
-     *
-     * 0 = Dashboard
-     * 1 = Tugas
-     * 2 = Jadwal
-     * 3 = Kalender
-     * 4 = Mata Kuliah
-     * 5 = Profile
+     * ================================================
      */
+
     val pagerState =
         rememberPagerState(
-            initialPage = 0,
+
+            initialPage =
+                0,
+
             pageCount = {
                 6
             }
@@ -189,10 +183,11 @@ private fun MyTaskMainContent() {
     val currentPage =
         pagerState.currentPage
 
+
     /*
-     * =================================================
-     * NAVGRAPH STATE
-     * =================================================
+     * ================================================
+     * NAVIGATION STATE
+     * ================================================
      */
 
     val backStackEntry by
@@ -204,20 +199,27 @@ private fun MyTaskMainContent() {
             ?.destination
             ?.route
 
-    val isSubScreen =
-        currentRoute ==
-                Screen.AddTask.route ||
-                currentRoute ==
-                Screen.AddCourse.route ||
-                currentRoute ==
-                Screen.NotificationSettings.route
-
 
     /*
-     * =================================================
-     * SCAFFOLD
-     * =================================================
+     * ================================================
+     * SUB SCREEN
+     * ================================================
      */
+
+    val isSubScreen =
+
+        currentRoute ==
+                Screen.AddTask.route ||
+
+                currentRoute ==
+                Screen.AddCourse.route ||
+
+                currentRoute ==
+                Screen.NotificationSettings.route ||
+
+                currentRoute ==
+                Screen.Backup.route
+
 
     Scaffold(
 
@@ -252,7 +254,10 @@ private fun MyTaskMainContent() {
                         icon = {
 
                             Icon(
-                                Icons.Default.Dashboard,
+
+                                Icons.Default
+                                    .Dashboard,
+
                                 contentDescription =
                                     "Dashboard"
                             )
@@ -288,7 +293,10 @@ private fun MyTaskMainContent() {
                         icon = {
 
                             Icon(
-                                Icons.Default.Task,
+
+                                Icons.Default
+                                    .Task,
+
                                 contentDescription =
                                     "Tugas"
                             )
@@ -324,7 +332,10 @@ private fun MyTaskMainContent() {
                         icon = {
 
                             Icon(
-                                Icons.Default.Schedule,
+
+                                Icons.Default
+                                    .Schedule,
+
                                 contentDescription =
                                     "Jadwal"
                             )
@@ -360,7 +371,10 @@ private fun MyTaskMainContent() {
                         icon = {
 
                             Icon(
-                                Icons.Default.CalendarMonth,
+
+                                Icons.Default
+                                    .CalendarMonth,
+
                                 contentDescription =
                                     "Kalender"
                             )
@@ -396,7 +410,10 @@ private fun MyTaskMainContent() {
                         icon = {
 
                             Icon(
-                                Icons.Default.MenuBook,
+
+                                Icons.Default
+                                    .MenuBook,
+
                                 contentDescription =
                                     "Mata Kuliah"
                             )
@@ -432,7 +449,10 @@ private fun MyTaskMainContent() {
                         icon = {
 
                             Icon(
-                                Icons.Default.Person,
+
+                                Icons.Default
+                                    .Person,
+
                                 contentDescription =
                                     "Profile"
                             )
@@ -448,23 +468,16 @@ private fun MyTaskMainContent() {
     ) { paddingValues ->
 
         Box(
+
             modifier =
                 Modifier.fillMaxSize()
+
         ) {
 
             /*
-             * =================================================
+             * =========================================
              * NAVGRAPH
-             * =================================================
-             *
-             * SELALU aktif agar tombol Tambah/Edit
-             * tidak force close.
-             *
-             * Saat idle:
-             * berada di belakang pager.
-             *
-             * Saat edit:
-             * berada di atas pager.
+             * =========================================
              */
 
             NavGraph(
@@ -492,12 +505,11 @@ private fun MyTaskMainContent() {
 
 
             /*
-             * =================================================
-             * HORIZONTAL PAGER
-             * =================================================
-             *
-             * Tidak ditampilkan ketika Add/Edit.
+             * =========================================
+             * MAIN PAGER
+             * =========================================
              */
+
             if (!isSubScreen) {
 
                 HorizontalPager(
@@ -511,7 +523,9 @@ private fun MyTaskMainContent() {
                             .padding(
                                 paddingValues
                             )
-                            .zIndex(1f),
+                            .zIndex(
+                                1f
+                            ),
 
                     beyondViewportPageCount =
                         1
@@ -521,9 +535,9 @@ private fun MyTaskMainContent() {
                     when (page) {
 
                         /*
-                         * =====================================
+                         * =================================
                          * DASHBOARD
-                         * =====================================
+                         * =================================
                          */
 
                         0 -> {
@@ -578,9 +592,9 @@ private fun MyTaskMainContent() {
 
 
                         /*
-                         * =====================================
+                         * =================================
                          * TUGAS
-                         * =====================================
+                         * =================================
                          */
 
                         1 -> {
@@ -590,6 +604,7 @@ private fun MyTaskMainContent() {
                                 onAddTask = {
 
                                     navController.navigate(
+
                                         "add_task?taskId=-1"
                                     )
                                 },
@@ -597,6 +612,7 @@ private fun MyTaskMainContent() {
                                 onEditTask = { id ->
 
                                     navController.navigate(
+
                                         "add_task?taskId=$id"
                                     )
                                 }
@@ -605,9 +621,9 @@ private fun MyTaskMainContent() {
 
 
                         /*
-                         * =====================================
+                         * =================================
                          * JADWAL
-                         * =====================================
+                         * =================================
                          */
 
                         2 -> {
@@ -617,9 +633,9 @@ private fun MyTaskMainContent() {
 
 
                         /*
-                         * =====================================
+                         * =================================
                          * KALENDER
-                         * =====================================
+                         * =================================
                          */
 
                         3 -> {
@@ -631,12 +647,15 @@ private fun MyTaskMainContent() {
                                     scope.launch {
 
                                         if (
-                                            currentPage > 0
+                                            currentPage >
+                                            0
                                         ) {
 
                                             pagerState
                                                 .animateScrollToPage(
-                                                    currentPage - 1
+
+                                                    currentPage -
+                                                            1
                                                 )
                                         }
                                     }
@@ -646,9 +665,9 @@ private fun MyTaskMainContent() {
 
 
                         /*
-                         * =====================================
+                         * =================================
                          * MATA KULIAH
-                         * =====================================
+                         * =================================
                          */
 
                         4 -> {
@@ -658,6 +677,7 @@ private fun MyTaskMainContent() {
                                 onAddCourse = {
 
                                     navController.navigate(
+
                                         "add_course?courseId=-1"
                                     )
                                 },
@@ -665,6 +685,7 @@ private fun MyTaskMainContent() {
                                 onEditCourse = { id ->
 
                                     navController.navigate(
+
                                         "add_course?courseId=$id"
                                     )
                                 }
@@ -673,9 +694,9 @@ private fun MyTaskMainContent() {
 
 
                         /*
-                         * =====================================
+                         * =================================
                          * PROFILE
-                         * =====================================
+                         * =================================
                          */
 
                         5 -> {
@@ -687,15 +708,38 @@ private fun MyTaskMainContent() {
                                     scope.launch {
 
                                         if (
-                                            currentPage > 0
+                                            currentPage >
+                                            0
                                         ) {
 
                                             pagerState
                                                 .animateScrollToPage(
-                                                    currentPage - 1
+
+                                                    currentPage -
+                                                            1
                                                 )
                                         }
                                     }
+                                },
+
+                                onNotificationSettings = {
+
+                                    navController.navigate(
+
+                                        Screen
+                                            .NotificationSettings
+                                            .route
+                                    )
+                                },
+
+                                onBackupData = {
+
+                                    navController.navigate(
+
+                                        Screen
+                                            .Backup
+                                            .route
+                                    )
                                 }
                             )
                         }

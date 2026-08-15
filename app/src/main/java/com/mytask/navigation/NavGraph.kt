@@ -12,6 +12,7 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.navArgument
 import com.mytask.ui.course.AddEditCourseScreen
+import com.mytask.ui.profile.BackupScreen
 import com.mytask.ui.profile.NotificationSettingsScreen
 import com.mytask.ui.task.AddEditTaskScreen
 
@@ -46,8 +47,17 @@ fun NavGraph(
 
     ) {
 
+        /*
+         * =========================================
+         * NOTIFICATION SETTINGS
+         * =========================================
+         */
+
         composable(
-            Screen.NotificationSettings.route
+
+            route =
+                Screen.NotificationSettings.route
+
         ) {
 
             NotificationSettingsScreen(
@@ -60,25 +70,50 @@ fun NavGraph(
             )
         }
 
+
+        /*
+         * =========================================
+         * BACKUP & DATA
+         * =========================================
+         */
+
+        composable(
+
+            route =
+                Screen.Backup.route
+
+        ) {
+
+            BackupScreen(
+
+                onBack = {
+
+                    navController
+                        .popBackStack()
+                }
+            )
+        }
+
+
         /*
          * =========================================
          * IDLE
          * =========================================
-         *
-         * Harus ada agar NavHost selalu aktif,
-         * tetapi tidak menggambar apa pun.
          */
 
-
         composable(
+
             "navigation_idle"
+
         ) {
 
             Box(
+
                 modifier =
                     Modifier.fillMaxSize()
             )
         }
+
 
         /*
          * =========================================
@@ -109,12 +144,14 @@ fun NavGraph(
         ) { entry ->
 
             val taskId =
+
                 entry
                     .arguments
                     ?.getLong(
                         "taskId"
                     )
                     ?.takeIf {
+
                         it != -1L
                     }
 
@@ -130,6 +167,7 @@ fun NavGraph(
                 }
             )
         }
+
 
         /*
          * =========================================
@@ -160,12 +198,14 @@ fun NavGraph(
         ) { entry ->
 
             val courseId =
+
                 entry
                     .arguments
                     ?.getLong(
                         "courseId"
                     )
                     ?.takeIf {
+
                         it != -1L
                     }
 

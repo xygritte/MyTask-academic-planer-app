@@ -2,244 +2,49 @@
 
 package com.mytask.ui.profile
 
-import android.widget.Toast
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
-import androidx.compose.material.icons.filled.CloudDownload
-import androidx.compose.material.icons.filled.CloudUpload
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Button
+import androidx.compose.material.icons.filled.ArrowForwardIos
+import androidx.compose.material.icons.filled.Cloud
+import androidx.compose.material.icons.filled.Notifications
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.hilt.navigation.compose.hiltViewModel
-import androidx.lifecycle.viewmodel.compose.viewModel
+import com.mytask.R
 
 @Composable
 fun ProfileScreen(
+
     onBack: () -> Unit = {},
-    viewModel: BackupViewModel = hiltViewModel()
+
+    onNotificationSettings: () -> Unit = {},
+
+    onBackupData: () -> Unit = {}
+
 ) {
-
-    val context = LocalContext.current
-
-    var pendingJson by remember {
-        mutableStateOf<String?>(null)
-    }
-
-    var showImportConfirm by remember {
-        mutableStateOf(false)
-    }
-
-    /*
-     * EXPORT
-     */
-    val exportLauncher =
-        rememberLauncherForActivityResult(
-            contract =
-                ActivityResultContracts.CreateDocument(
-                    "application/json"
-                )
-        ) { uri ->
-
-            if (uri != null) {
-
-                viewModel.exportData(
-
-                    onSuccess = { json ->
-
-                        try {
-
-                            context
-                                .contentResolver
-                                .openOutputStream(uri)
-                                ?.use { output ->
-
-                                    output.write(
-                                        json.toByteArray(
-                                            Charsets.UTF_8
-                                        )
-                                    )
-                                }
-
-                            Toast.makeText(
-                                context,
-                                "Backup berhasil disimpan.",
-                                Toast.LENGTH_LONG
-                            ).show()
-
-                        } catch (e: Exception) {
-
-                            Toast.makeText(
-                                context,
-                                "Gagal menyimpan backup.",
-                                Toast.LENGTH_LONG
-                            ).show()
-                        }
-                    },
-
-                    onError = { error ->
-
-                        Toast.makeText(
-                            context,
-                            error,
-                            Toast.LENGTH_LONG
-                        ).show()
-                    }
-                )
-            }
-        }
-
-    /*
-     * IMPORT
-     */
-    val importLauncher =
-        rememberLauncherForActivityResult(
-            contract =
-                ActivityResultContracts.OpenDocument()
-        ) { uri ->
-
-            if (uri != null) {
-
-                try {
-
-                    val json =
-                        context
-                            .contentResolver
-                            .openInputStream(uri)
-                            ?.bufferedReader()
-                            ?.use {
-                                it.readText()
-                            }
-
-                    if (json != null) {
-
-                        pendingJson = json
-
-                        showImportConfirm = true
-                    }
-
-                } catch (e: Exception) {
-
-                    Toast.makeText(
-                        context,
-                        "Gagal membaca file backup.",
-                        Toast.LENGTH_LONG
-                    ).show()
-                }
-            }
-        }
-
-    /*
-     * KONFIRMASI IMPORT
-     */
-    if (showImportConfirm) {
-
-        AlertDialog(
-
-            onDismissRequest = {
-
-                showImportConfirm = false
-                pendingJson = null
-            },
-
-            title = {
-                Text("Impor Backup?")
-            },
-
-            text = {
-                Text(
-                    """
-                    Data MyTask yang sekarang akan diganti
-                    dengan isi backup.
-
-                    Pastikan file backup benar sebelum melanjutkan.
-                    """.trimIndent()
-                )
-            },
-
-            confirmButton = {
-
-                Button(
-
-                    onClick = {
-
-                        val json =
-                            pendingJson
-
-                        if (json != null) {
-
-                            viewModel.importData(
-
-                                json = json,
-
-                                onSuccess = {
-
-                                    showImportConfirm = false
-                                    pendingJson = null
-
-                                    Toast.makeText(
-                                        context,
-                                        "Backup berhasil diimpor.",
-                                        Toast.LENGTH_LONG
-                                    ).show()
-                                },
-
-                                onError = { error ->
-
-                                    showImportConfirm = false
-                                    pendingJson = null
-
-                                    Toast.makeText(
-                                        context,
-                                        error,
-                                        Toast.LENGTH_LONG
-                                    ).show()
-                                }
-                            )
-                        }
-                    }
-                ) {
-
-                    Text("Impor")
-                }
-            },
-
-            dismissButton = {
-
-                OutlinedButton(
-
-                    onClick = {
-
-                        showImportConfirm = false
-                        pendingJson = null
-                    }
-                ) {
-
-                    Text("Batal")
-                }
-            }
-        )
-    }
 
     Scaffold(
 
@@ -248,23 +53,10 @@ fun ProfileScreen(
             TopAppBar(
 
                 title = {
-                    Text("Profil & Backup")
-                },
 
-                navigationIcon = {
-
-                    IconButton(
-                        onClick = onBack
-                    ) {
-
-                        Icon(
-                            imageVector =
-                                Icons.Default.ArrowBack,
-
-                            contentDescription =
-                                "Kembali"
-                        )
-                    }
+                    Text(
+                        "Profil"
+                    )
                 }
             )
         }
@@ -276,95 +68,372 @@ fun ProfileScreen(
             modifier =
                 Modifier
                     .fillMaxSize()
-                    .padding(paddingValues)
-                    .padding(16.dp),
+                    .padding(
+                        paddingValues
+                    )
+                    .padding(
+                        horizontal = 16.dp
+                    ),
 
             verticalArrangement =
-                Arrangement.spacedBy(16.dp)
+                Arrangement.spacedBy(
+                    16.dp
+                )
+
         ) {
 
-            Text(
-                text = "Data & Backup"
-            )
-
-            Text(
-                text =
-                    "Simpan data MyTask ke file JSON untuk dipindahkan ke perangkat lain."
+            Spacer(
+                Modifier.height(8.dp)
             )
 
             /*
-             * EXPORT
+             * =========================================
+             * PROFILE HEADER
+             * =========================================
              */
 
-            Button(
-
-                onClick = {
-
-                    exportLauncher.launch(
-                        "MyTask_Backup.json"
-                    )
-                },
+            Card(
 
                 modifier =
-                    Modifier.fillMaxWidth()
+                    Modifier.fillMaxWidth(),
+
+                shape =
+                    MaterialTheme
+                        .shapes
+                        .extraLarge,
+
+                colors =
+                    CardDefaults.cardColors(
+
+                        containerColor =
+                            MaterialTheme
+                                .colorScheme
+                                .surfaceVariant
+                    )
+
             ) {
 
-                Icon(
-                    imageVector =
-                        Icons.Default.CloudDownload,
+                Column(
 
-                    contentDescription =
-                        null
-                )
+                    modifier =
+                        Modifier
+                            .fillMaxWidth()
+                            .padding(
+                                24.dp
+                            ),
 
-                Text(
-                    text =
-                        "  Ekspor Data"
-                )
-            }
+                    horizontalAlignment =
+                        Alignment.CenterHorizontally
 
-            /*
-             * IMPORT
-             */
+                ) {
 
-            OutlinedButton(
+                    /*
+                     * Avatar sementara menggunakan
+                     * launcher icon MyTask.
+                     *
+                     * Nanti dapat diganti dengan
+                     * foto/profile image pengguna.
+                     */
 
-                onClick = {
+                    Image(
 
-                    importLauncher.launch(
-                        arrayOf(
-                            "application/json",
-                            "text/plain"
+                        painter =
+                            painterResource(
+                                id =
+                                    R.mipmap.mytask_background
+                            ),
+
+                        contentDescription =
+                            "Avatar",
+
+                        modifier =
+                            Modifier
+                                .size(
+                                    92.dp
+                                )
+                                .clip(
+                                    CircleShape
+                                )
+                    )
+
+                    Spacer(
+                        Modifier.height(
+                            16.dp
                         )
                     )
-                },
 
-                modifier =
-                    Modifier.fillMaxWidth()
-            ) {
+                    Text(
 
-                Icon(
-                    imageVector =
-                        Icons.Default.CloudUpload,
+                        text =
+                            "Mahasiswa",
 
-                    contentDescription =
-                        null
-                )
+                        style =
+                            MaterialTheme
+                                .typography
+                                .headlineSmall,
 
-                Text(
-                    text =
-                        "  Impor Data"
-                )
+                        fontWeight =
+                            FontWeight.Bold
+                    )
+
+                    Spacer(
+                        Modifier.height(
+                            4.dp
+                        )
+                    )
+
+                    Text(
+
+                        text =
+                            "Teknik Informatika",
+
+                        style =
+                            MaterialTheme
+                                .typography
+                                .bodyLarge
+                    )
+                }
             }
 
+            /*
+             * =========================================
+             * SETTINGS SECTION
+             * =========================================
+             */
+
             Text(
+
                 text =
-                    "Backup mencakup Mata Kuliah, Tugas, deadline, prioritas, status tugas, dan Jadwal."
+                    "Pengaturan",
+
+                style =
+                    MaterialTheme
+                        .typography
+                        .titleMedium,
+
+                fontWeight =
+                    FontWeight.Bold
+            )
+
+            /*
+             * =========================================
+             * NOTIFICATION
+             * =========================================
+             */
+
+            ProfileMenuCard(
+
+                icon =
+                    Icons.Default.Notifications,
+
+                title =
+                    "Notifikasi",
+
+                description =
+                    "Atur pengingat deadline dan tugas aktif.",
+
+                onClick =
+                    onNotificationSettings
+            )
+
+            /*
+             * =========================================
+             * BACKUP
+             * =========================================
+             */
+
+            ProfileMenuCard(
+
+                icon =
+                    Icons.Default.Cloud,
+
+                title =
+                    "Backup & Data",
+
+                description =
+                    "Ekspor dan impor data MyTask.",
+
+                onClick =
+                    onBackupData
+            )
+
+            Spacer(
+                Modifier.height(
+                    8.dp
+                )
             )
 
             Text(
+
                 text =
-                    "Catatan: impor backup akan mengganti data yang sedang ada di aplikasi."
+                    "MyTask Academic Planner",
+
+                style =
+                    MaterialTheme
+                        .typography
+                        .bodySmall,
+
+                color =
+                    MaterialTheme
+                        .colorScheme
+                        .onSurfaceVariant
+            )
+        }
+    }
+}
+
+
+/*
+ * =====================================================
+ * PROFILE MENU CARD
+ * =====================================================
+ */
+
+@Composable
+private fun ProfileMenuCard(
+
+    icon:
+    androidx.compose.ui.graphics.vector.ImageVector,
+
+    title:
+    String,
+
+    description:
+    String,
+
+    onClick:
+        () -> Unit
+
+) {
+
+    Card(
+
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .clickable {
+                    onClick()
+                },
+
+        shape =
+            MaterialTheme
+                .shapes
+                .large,
+
+        colors =
+            CardDefaults.cardColors(
+
+                containerColor =
+                    MaterialTheme
+                        .colorScheme
+                        .surface
+            )
+
+    ) {
+
+        Row(
+
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .padding(
+                        18.dp
+                    ),
+
+            verticalAlignment =
+                Alignment.CenterVertically
+
+        ) {
+
+            Icon(
+
+                imageVector =
+                    icon,
+
+                contentDescription =
+                    null,
+
+                tint =
+                    MaterialTheme
+                        .colorScheme
+                        .primary,
+
+                modifier =
+                    Modifier.size(
+                        28.dp
+                    )
+            )
+
+            Spacer(
+                Modifier.size(
+                    16.dp
+                )
+            )
+
+            Column(
+
+                modifier =
+                    Modifier.weight(
+                        1f
+                    )
+
+            ) {
+
+                Text(
+
+                    text =
+                        title,
+
+                    style =
+                        MaterialTheme
+                            .typography
+                            .titleMedium,
+
+                    fontWeight =
+                        FontWeight.SemiBold
+                )
+
+                Spacer(
+                    Modifier.height(
+                        2.dp
+                    )
+                )
+
+                Text(
+
+                    text =
+                        description,
+
+                    style =
+                        MaterialTheme
+                            .typography
+                            .bodySmall,
+
+                    color =
+                        MaterialTheme
+                            .colorScheme
+                            .onSurfaceVariant
+                )
+            }
+
+            Icon(
+
+                imageVector =
+                    Icons.Default
+                        .ArrowForwardIos,
+
+                contentDescription =
+                    "Buka",
+
+                modifier =
+                    Modifier.size(
+                        16.dp
+                    ),
+
+                tint =
+                    MaterialTheme
+                        .colorScheme
+                        .onSurfaceVariant
             )
         }
     }
