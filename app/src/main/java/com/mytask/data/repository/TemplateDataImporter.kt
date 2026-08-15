@@ -7,13 +7,13 @@ import com.mytask.data.local.entity.CourseEntity
 import com.mytask.data.local.entity.ScheduleEntity
 import com.mytask.data.local.entity.TaskEntity
 import dagger.hilt.android.qualifiers.ApplicationContext
-import dagger.hilt.android.scopes.ActivityRetainedScoped
 import org.json.JSONObject
 import java.util.Calendar
 import java.util.Date
 import javax.inject.Inject
+import javax.inject.Singleton
 
-@ActivityRetainedScoped
+@Singleton
 class TemplateDataImporter @Inject constructor(
     @ApplicationContext private val context: Context,
     private val database: MyTaskDatabase
