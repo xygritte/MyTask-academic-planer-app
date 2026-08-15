@@ -71,6 +71,8 @@ fun DashboardScreen(
     val courses by viewModel.courses.collectAsState()
     val schedules by viewModel.schedules.collectAsState()
 
+    val completedTaskCount = tasks.count { it.isCompleted }
+
     val today = Calendar.getInstance().get(Calendar.DAY_OF_WEEK)
     val todaySchedules = schedules
         .filter { it.dayOfWeek == today }
@@ -149,22 +151,35 @@ fun DashboardScreen(
             }
 
             item {
-                Row(
+                Column(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        OverviewCard(
+                            title = "Mata Kuliah",
+                            value = courseCount.toString(),
+                            icon = Icons.Default.MenuBook,
+                            modifier = Modifier.weight(1f),
+                            onClick = onCoursesClick
+                        )
+                        OverviewCard(
+                            title = "Tugas Aktif",
+                            value = activeTaskCount.toString(),
+                            icon = Icons.Default.Task,
+                            modifier = Modifier.weight(1f),
+                            onClick = onTasksClick
+                        )
+                    }
+
                     OverviewCard(
-                        title = "Mata Kuliah",
-                        value = courseCount.toString(),
-                        icon = Icons.Default.MenuBook,
-                        modifier = Modifier.weight(1f),
-                        onClick = onCoursesClick
-                    )
-                    OverviewCard(
-                        title = "Tugas Aktif",
-                        value = activeTaskCount.toString(),
-                        icon = Icons.Default.Task,
-                        modifier = Modifier.weight(1f),
+                        title = "Tugas Selesai",
+                        value = completedTaskCount.toString(),
+                        icon = Icons.Default.CheckCircle,
+                        modifier = Modifier.fillMaxWidth(),
                         onClick = onTasksClick
                     )
                 }
