@@ -16,6 +16,11 @@ class NotificationSettingsViewModel
     SettingsRepository
 ) : ViewModel() {
 
+    /**
+     * Jumlah hari sebelum deadline
+     * untuk mulai menampilkan
+     * notifikasi permanen.
+     */
     val taskReminderDays =
         settingsRepository
             .taskReminderDays
@@ -33,6 +38,9 @@ class NotificationSettingsViewModel
                     1
             )
 
+    /**
+     * Status notifikasi "Tugas Aktif".
+     */
     val activeTaskNotification =
         settingsRepository
             .activeTaskNotification
@@ -50,6 +58,9 @@ class NotificationSettingsViewModel
                     true
             )
 
+    /**
+     * Mengubah jumlah hari pengingat.
+     */
     fun setTaskReminderDays(
         days: Int
     ) {
@@ -63,6 +74,10 @@ class NotificationSettingsViewModel
         }
     }
 
+    /**
+     * Mengaktifkan / menonaktifkan
+     * notifikasi tugas aktif.
+     */
     fun setActiveTaskNotification(
         enabled: Boolean
     ) {

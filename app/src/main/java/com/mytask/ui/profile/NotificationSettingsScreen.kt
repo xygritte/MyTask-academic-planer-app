@@ -12,10 +12,10 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Remove
-import androidx.compose.material.icons.filled.Add
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -37,14 +37,9 @@ import androidx.hilt.navigation.compose.hiltViewModel
 
 @Composable
 fun NotificationSettingsScreen(
-
-    onBack:
-        () -> Unit = {},
-
-    viewModel:
-    NotificationSettingsViewModel =
+    onBack: () -> Unit = {},
+    viewModel: NotificationSettingsViewModel =
         hiltViewModel()
-
 ) {
 
     val reminderDays by
@@ -79,8 +74,9 @@ fun NotificationSettingsScreen(
 
                         Icon(
 
-                            Icons.Default
-                                .ArrowBack,
+                            imageVector =
+                                Icons.Default
+                                    .ArrowBack,
 
                             contentDescription =
                                 "Kembali"
@@ -142,11 +138,15 @@ fun NotificationSettingsScreen(
                             .primary,
 
                     modifier =
-                        Modifier.size(36.dp)
+                        Modifier.size(
+                            36.dp
+                        )
                 )
 
                 Spacer(
-                    Modifier.size(12.dp)
+                    Modifier.size(
+                        12.dp
+                    )
                 )
 
                 Column {
@@ -203,7 +203,9 @@ fun NotificationSettingsScreen(
                 )
 
                 Spacer(
-                    Modifier.height(6.dp)
+                    Modifier.height(
+                        6.dp
+                    )
                 )
 
                 Text(
@@ -240,7 +242,9 @@ fun NotificationSettingsScreen(
                 Column(
 
                     modifier =
-                        Modifier.weight(1f)
+                        Modifier.weight(
+                            1f
+                        )
 
                 ) {
 
@@ -266,7 +270,8 @@ fun NotificationSettingsScreen(
 
                             } else {
 
-                                "${reminderDays} hari sebelum deadline"
+                                "$reminderDays " +
+                                        "hari sebelum deadline"
                             },
 
                         style =
@@ -293,7 +298,9 @@ fun NotificationSettingsScreen(
 
                     Icon(
 
-                        Icons.Default.Remove,
+                        imageVector =
+                            Icons.Default
+                                .Remove,
 
                         contentDescription =
                             "Kurangi"
@@ -336,7 +343,9 @@ fun NotificationSettingsScreen(
 
                     Icon(
 
-                        Icons.Default.Add,
+                        imageVector =
+                            Icons.Default
+                                .Add,
 
                         contentDescription =
                             "Tambah"
@@ -365,7 +374,9 @@ fun NotificationSettingsScreen(
                 Column(
 
                     modifier =
-                        Modifier.weight(1f)
+                        Modifier.weight(
+                            1f
+                        )
 
                 ) {
 
@@ -386,8 +397,8 @@ fun NotificationSettingsScreen(
                     Text(
 
                         text =
-                            "Tampilkan notifikasi yang berisi " +
-                                    "daftar tugas aktif.",
+                            "Tampilkan notifikasi yang " +
+                                    "berisi daftar tugas aktif.",
 
                         style =
                             MaterialTheme
@@ -401,24 +412,26 @@ fun NotificationSettingsScreen(
                     checked =
                         activeTaskNotification,
 
-                    onCheckedChange = {
+                    onCheckedChange = { enabled ->
 
                         viewModel
                             .setActiveTaskNotification(
-                                it
+                                enabled
                             )
                     }
                 )
             }
 
             Spacer(
-                Modifier.height(8.dp)
+                Modifier.height(
+                    8.dp
+                )
             )
 
             Text(
 
                 text =
-                    "Notifikasi tugas aktif dapat dihapus " +
+                    "Notifikasi Tugas Aktif dapat dihapus " +
                             "dengan swipe. Pengaturan ini tidak " +
                             "memengaruhi pengingat deadline.",
 

@@ -22,17 +22,34 @@ class SettingsRepository @Inject constructor(
 
     companion object {
 
+        /**
+         * Berapa hari sebelum deadline
+         * notifikasi permanen mulai muncul.
+         *
+         * Contoh:
+         * 0 = hari deadline
+         * 1 = 1 hari sebelum deadline
+         * 3 = 3 hari sebelum deadline
+         */
         private val TASK_REMINDER_DAYS =
             intPreferencesKey(
                 "task_reminder_days"
             )
 
+        /**
+         * Menentukan apakah notifikasi
+         * "Tugas Aktif" diaktifkan.
+         */
         private val ACTIVE_TASK_NOTIFICATION =
             booleanPreferencesKey(
                 "active_task_notification"
             )
     }
 
+    /**
+     * Nilai default:
+     * 1 hari sebelum deadline.
+     */
     val taskReminderDays: Flow<Int> =
         context.settingsDataStore.data.map { preferences ->
 
@@ -41,6 +58,10 @@ class SettingsRepository @Inject constructor(
             ] ?: 1
         }
 
+    /**
+     * Nilai default:
+     * true
+     */
     val activeTaskNotification: Flow<Boolean> =
         context.settingsDataStore.data.map { preferences ->
 
@@ -49,6 +70,13 @@ class SettingsRepository @Inject constructor(
             ] ?: true
         }
 
+    /**
+     * Mengatur berapa hari sebelum deadline
+     * notifikasi permanen mulai muncul.
+     *
+     * Rentang:
+     * 0 sampai 30 hari.
+     */
     suspend fun setTaskReminderDays(
         days: Int
     ) {
@@ -65,6 +93,10 @@ class SettingsRepository @Inject constructor(
         }
     }
 
+    /**
+     * Mengaktifkan / menonaktifkan
+     * notifikasi "Tugas Aktif".
+     */
     suspend fun setActiveTaskNotification(
         enabled: Boolean
     ) {
