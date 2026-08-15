@@ -31,16 +31,20 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.zIndex
 import androidx.core.content.ContextCompat
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
+import com.mytask.data.repository.UserProfile
+import com.mytask.data.repository.UserProfileRepository
 import com.mytask.navigation.NavGraph
 import com.mytask.navigation.Screen
 import com.mytask.ui.calendar.CalendarScreen
 import com.mytask.ui.course.CourseListScreen
 import com.mytask.ui.dashboard.DashboardScreen
 import com.mytask.ui.loading.LoadingScreen
+import com.mytask.ui.login.LoginScreen
 import com.mytask.ui.profile.ProfileScreen
 import com.mytask.ui.schedule.ScheduleScreen
 import com.mytask.ui.task.TaskListScreen
@@ -48,6 +52,9 @@ import com.mytask.ui.theme.MyTaskTheme
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.first
+import androidx.compose.runtime.produceState
 
 @AndroidEntryPoint
 class MainActivity : ComponentActivity() {
@@ -62,684 +69,333 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(
         savedInstanceState: Bundle?
     ) {
-
-        super.onCreate(
-            savedInstanceState
-        )
+        super.onCreate(savedInstanceState)
 
         requestNotificationPermission()
 
         setContent {
-
             MyTaskTheme {
-
                 MyTaskApp()
             }
         }
     }
 
-
     private fun requestNotificationPermission() {
-
-        if (
-            Build.VERSION.SDK_INT >=
-            Build.VERSION_CODES.TIRAMISU
-        ) {
-
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             val granted =
                 ContextCompat.checkSelfPermission(
-
                     this,
-
-                    Manifest.permission
-                        .POST_NOTIFICATIONS
-
-                ) ==
-                        PackageManager
-                            .PERMISSION_GRANTED
+                    Manifest.permission.POST_NOTIFICATIONS
+                ) == PackageManager.PERMISSION_GRANTED
 
             if (!granted) {
-
-                notificationPermissionLauncher
-                    .launch(
-
-                        Manifest.permission
-                            .POST_NOTIFICATIONS
-                    )
+                notificationPermissionLauncher.launch(
+                    Manifest.permission.POST_NOTIFICATIONS
+                )
             }
         }
     }
 }
-
-
-/*
- * =====================================================
- * ROOT APP
- * =====================================================
- */
 
 @Composable
 private fun MyTaskApp() {
 
-    var isLoading by remember {
+    val context = LocalContext.current.applicationContext
 
-        mutableStateOf(
-            true
-        )
+    val repository = remember(context) {
+        UserProfileRepository(context)
+    }
+
+    val profileState = produceState<Pair<Boolean, UserProfile?>>(
+        initialValue = false to null,
+        key1 = repository
+    ) {
+        repository.profile.collectLatest { profile ->
+            value = true to profile
+        }
+    }
+
+    var minimumLoading by remember {
+        mutableStateOf(true)
     }
 
     LaunchedEffect(Unit) {
-
         delay(800)
-
-        isLoading =
-            false
+        minimumLoading = false
     }
 
-    if (isLoading) {
+    val profileLoaded = profileState.value.first
+    val profile = profileState.value.second
 
+    if (minimumLoading || !profileLoaded) {
         LoadingScreen()
-
         return
     }
 
-    MyTaskMainContent()
+    if (profile == null) {
+        LoginScreen(repository = repository)
+        return
+    }
+
+    MyTaskMainContent(
+        profile = profile,
+        repository = repository
+    )
 }
 
-
-/*
- * =====================================================
- * MAIN CONTENT
- * =====================================================
- */
-
 @Composable
-private fun MyTaskMainContent() {
+private fun MyTaskMainContent(
+    profile: UserProfile,
+    repository: UserProfileRepository
+) {
 
-    val navController =
-        rememberNavController()
+    val navController = rememberNavController()
+    val scope = rememberCoroutineScope()
 
-    val scope =
-        rememberCoroutineScope()
+    val pagerState = rememberPagerState(
+        initialPage = 0,
+        pageCount = { 6 }
+    )
 
-
-    /*
-     * ================================================
-     * PAGER
-     * ================================================
-     */
-
-    val pagerState =
-        rememberPagerState(
-
-            initialPage =
-                0,
-
-            pageCount = {
-                6
-            }
-        )
-
-    val currentPage =
-        pagerState.currentPage
-
-
-    /*
-     * ================================================
-     * NAVIGATION STATE
-     * ================================================
-     */
+    val currentPage = pagerState.currentPage
 
     val backStackEntry by
-    navController
-        .currentBackStackEntryAsState()
+        navController.currentBackStackEntryAsState()
 
     val currentRoute =
-        backStackEntry
-            ?.destination
-            ?.route
-
-
-    /*
-     * ================================================
-     * SUB SCREEN
-     * ================================================
-     */
+        backStackEntry?.destination?.route
 
     val isSubScreen =
-
-        currentRoute ==
-                Screen.AddTask.route ||
-
-                currentRoute ==
-                Screen.AddCourse.route ||
-
-                currentRoute ==
-                Screen.NotificationSettings.route ||
-
-                currentRoute ==
-                Screen.Backup.route
-
+        currentRoute == Screen.AddTask.route ||
+        currentRoute == Screen.AddCourse.route ||
+        currentRoute == Screen.NotificationSettings.route ||
+        currentRoute == Screen.Backup.route
 
     Scaffold(
-
         bottomBar = {
-
             if (!isSubScreen) {
-
                 NavigationBar {
-
-                    /*
-                     * =================================
-                     * DASHBOARD
-                     * =================================
-                     */
-
                     NavigationBarItem(
-
-                        selected =
-                            currentPage == 0,
-
+                        selected = currentPage == 0,
                         onClick = {
-
                             scope.launch {
-
-                                pagerState
-                                    .animateScrollToPage(
-                                        0
-                                    )
+                                pagerState.animateScrollToPage(0)
                             }
                         },
-
                         icon = {
-
                             Icon(
-
-                                Icons.Default
-                                    .Dashboard,
-
-                                contentDescription =
-                                    "Dashboard"
+                                Icons.Default.Dashboard,
+                                contentDescription = "Dashboard"
                             )
                         },
-
-                        alwaysShowLabel =
-                            false
+                        alwaysShowLabel = false
                     )
 
-
-                    /*
-                     * =================================
-                     * TUGAS
-                     * =================================
-                     */
-
                     NavigationBarItem(
-
-                        selected =
-                            currentPage == 1,
-
+                        selected = currentPage == 1,
                         onClick = {
-
                             scope.launch {
-
-                                pagerState
-                                    .animateScrollToPage(
-                                        1
-                                    )
+                                pagerState.animateScrollToPage(1)
                             }
                         },
-
                         icon = {
-
                             Icon(
-
-                                Icons.Default
-                                    .Task,
-
-                                contentDescription =
-                                    "Tugas"
+                                Icons.Default.Task,
+                                contentDescription = "Tugas"
                             )
                         },
-
-                        alwaysShowLabel =
-                            false
+                        alwaysShowLabel = false
                     )
 
-
-                    /*
-                     * =================================
-                     * JADWAL
-                     * =================================
-                     */
-
                     NavigationBarItem(
-
-                        selected =
-                            currentPage == 2,
-
+                        selected = currentPage == 2,
                         onClick = {
-
                             scope.launch {
-
-                                pagerState
-                                    .animateScrollToPage(
-                                        2
-                                    )
+                                pagerState.animateScrollToPage(2)
                             }
                         },
-
                         icon = {
-
                             Icon(
-
-                                Icons.Default
-                                    .Schedule,
-
-                                contentDescription =
-                                    "Jadwal"
+                                Icons.Default.Schedule,
+                                contentDescription = "Jadwal"
                             )
                         },
-
-                        alwaysShowLabel =
-                            false
+                        alwaysShowLabel = false
                     )
 
-
-                    /*
-                     * =================================
-                     * KALENDER
-                     * =================================
-                     */
-
                     NavigationBarItem(
-
-                        selected =
-                            currentPage == 3,
-
+                        selected = currentPage == 3,
                         onClick = {
-
                             scope.launch {
-
-                                pagerState
-                                    .animateScrollToPage(
-                                        3
-                                    )
+                                pagerState.animateScrollToPage(3)
                             }
                         },
-
                         icon = {
-
                             Icon(
-
-                                Icons.Default
-                                    .CalendarMonth,
-
-                                contentDescription =
-                                    "Kalender"
+                                Icons.Default.CalendarMonth,
+                                contentDescription = "Kalender"
                             )
                         },
-
-                        alwaysShowLabel =
-                            false
+                        alwaysShowLabel = false
                     )
 
-
-                    /*
-                     * =================================
-                     * MATA KULIAH
-                     * =================================
-                     */
-
                     NavigationBarItem(
-
-                        selected =
-                            currentPage == 4,
-
+                        selected = currentPage == 4,
                         onClick = {
-
                             scope.launch {
-
-                                pagerState
-                                    .animateScrollToPage(
-                                        4
-                                    )
+                                pagerState.animateScrollToPage(4)
                             }
                         },
-
                         icon = {
-
                             Icon(
-
-                                Icons.Default
-                                    .MenuBook,
-
-                                contentDescription =
-                                    "Mata Kuliah"
+                                Icons.Default.MenuBook,
+                                contentDescription = "Mata Kuliah"
                             )
                         },
-
-                        alwaysShowLabel =
-                            false
+                        alwaysShowLabel = false
                     )
 
-
-                    /*
-                     * =================================
-                     * PROFILE
-                     * =================================
-                     */
-
                     NavigationBarItem(
-
-                        selected =
-                            currentPage == 5,
-
+                        selected = currentPage == 5,
                         onClick = {
-
                             scope.launch {
-
-                                pagerState
-                                    .animateScrollToPage(
-                                        5
-                                    )
+                                pagerState.animateScrollToPage(5)
                             }
                         },
-
                         icon = {
-
                             Icon(
-
-                                Icons.Default
-                                    .Person,
-
-                                contentDescription =
-                                    "Profile"
+                                Icons.Default.Person,
+                                contentDescription = "Profile"
                             )
                         },
-
-                        alwaysShowLabel =
-                            false
+                        alwaysShowLabel = false
                     )
                 }
             }
         }
-
     ) { paddingValues ->
 
-        Box(
-
-            modifier =
-                Modifier.fillMaxSize()
-
-        ) {
-
-            /*
-             * =========================================
-             * NAVGRAPH
-             * =========================================
-             */
+        Box(modifier = Modifier.fillMaxSize()) {
 
             NavGraph(
-
-                navController =
-                    navController,
-
-                paddingValues =
-                    paddingValues,
-
-                modifier =
-                    Modifier
-                        .fillMaxSize()
-                        .zIndex(
-
-                            if (
-                                isSubScreen
-                            ) {
-                                10f
-                            } else {
-                                0f
-                            }
-                        )
+                navController = navController,
+                paddingValues = paddingValues,
+                modifier = Modifier
+                    .fillMaxSize()
+                    .zIndex(if (isSubScreen) 10f else 0f)
             )
 
-
-            /*
-             * =========================================
-             * MAIN PAGER
-             * =========================================
-             */
-
             if (!isSubScreen) {
-
                 HorizontalPager(
-
-                    state =
-                        pagerState,
-
-                    modifier =
-                        Modifier
-                            .fillMaxSize()
-                            .padding(
-                                paddingValues
-                            )
-                            .zIndex(
-                                1f
-                            ),
-
-                    beyondViewportPageCount =
-                        1
-
+                    state = pagerState,
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(paddingValues)
+                        .zIndex(1f),
+                    beyondViewportPageCount = 1
                 ) { page ->
 
                     when (page) {
 
-                        /*
-                         * =================================
-                         * DASHBOARD
-                         * =================================
-                         */
-
                         0 -> {
-
                             DashboardScreen(
-
                                 onCoursesClick = {
-
                                     scope.launch {
-
-                                        pagerState
-                                            .animateScrollToPage(
-                                                4
-                                            )
+                                        pagerState.animateScrollToPage(4)
                                     }
                                 },
-
                                 onTasksClick = {
-
                                     scope.launch {
-
-                                        pagerState
-                                            .animateScrollToPage(
-                                                1
-                                            )
+                                        pagerState.animateScrollToPage(1)
                                     }
                                 },
-
                                 onScheduleClick = {
-
                                     scope.launch {
-
-                                        pagerState
-                                            .animateScrollToPage(
-                                                2
-                                            )
+                                        pagerState.animateScrollToPage(2)
                                     }
                                 },
-
                                 onCalendarClick = {
-
                                     scope.launch {
-
-                                        pagerState
-                                            .animateScrollToPage(
-                                                3
-                                            )
+                                        pagerState.animateScrollToPage(3)
                                     }
                                 }
                             )
                         }
 
-
-                        /*
-                         * =================================
-                         * TUGAS
-                         * =================================
-                         */
-
                         1 -> {
-
                             TaskListScreen(
-
                                 onAddTask = {
-
                                     navController.navigate(
-
                                         "add_task?taskId=-1"
                                     )
                                 },
-
                                 onEditTask = { id ->
-
                                     navController.navigate(
-
                                         "add_task?taskId=$id"
                                     )
                                 }
                             )
                         }
 
-
-                        /*
-                         * =================================
-                         * JADWAL
-                         * =================================
-                         */
-
                         2 -> {
-
                             ScheduleScreen()
                         }
 
-
-                        /*
-                         * =================================
-                         * KALENDER
-                         * =================================
-                         */
-
                         3 -> {
-
                             CalendarScreen(
-
                                 onBack = {
-
                                     scope.launch {
-
-                                        if (
-                                            currentPage >
-                                            0
-                                        ) {
-
-                                            pagerState
-                                                .animateScrollToPage(
-
-                                                    currentPage -
-                                                            1
-                                                )
+                                        if (currentPage > 0) {
+                                            pagerState.animateScrollToPage(
+                                                currentPage - 1
+                                            )
                                         }
                                     }
                                 }
                             )
                         }
 
-
-                        /*
-                         * =================================
-                         * MATA KULIAH
-                         * =================================
-                         */
-
                         4 -> {
-
                             CourseListScreen(
-
                                 onAddCourse = {
-
                                     navController.navigate(
-
                                         "add_course?courseId=-1"
                                     )
                                 },
-
                                 onEditCourse = { id ->
-
                                     navController.navigate(
-
                                         "add_course?courseId=$id"
                                     )
                                 }
                             )
                         }
 
-
-                        /*
-                         * =================================
-                         * PROFILE
-                         * =================================
-                         */
-
                         5 -> {
-
                             ProfileScreen(
-
+                                profile = profile,
                                 onBack = {
-
                                     scope.launch {
-
-                                        if (
-                                            currentPage >
-                                            0
-                                        ) {
-
-                                            pagerState
-                                                .animateScrollToPage(
-
-                                                    currentPage -
-                                                            1
-                                                )
+                                        if (currentPage > 0) {
+                                            pagerState.animateScrollToPage(
+                                                currentPage - 1
+                                            )
                                         }
                                     }
                                 },
-
                                 onNotificationSettings = {
-
                                     navController.navigate(
-
-                                        Screen
-                                            .NotificationSettings
-                                            .route
+                                        Screen.NotificationSettings.route
                                     )
                                 },
-
                                 onBackupData = {
-
                                     navController.navigate(
-
-                                        Screen
-                                            .Backup
-                                            .route
+                                        Screen.Backup.route
                                     )
+                                },
+                                onEditProfile = {
+                                    scope.launch {
+                                        repository.clearProfile()
+                                    }
                                 }
                             )
                         }
