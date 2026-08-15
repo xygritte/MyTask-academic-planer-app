@@ -204,11 +204,13 @@ private fun MyTaskMainContent() {
             ?.destination
             ?.route
 
-    val isEditing =
+    val isSubScreen =
         currentRoute ==
                 Screen.AddTask.route ||
                 currentRoute ==
-                Screen.AddCourse.route
+                Screen.AddCourse.route ||
+                currentRoute ==
+                Screen.NotificationSettings.route
 
 
     /*
@@ -221,7 +223,7 @@ private fun MyTaskMainContent() {
 
         bottomBar = {
 
-            if (!isEditing) {
+            if (!isSubScreen) {
 
                 NavigationBar {
 
@@ -479,7 +481,7 @@ private fun MyTaskMainContent() {
                         .zIndex(
 
                             if (
-                                isEditing
+                                isSubScreen
                             ) {
                                 10f
                             } else {
@@ -496,7 +498,7 @@ private fun MyTaskMainContent() {
              *
              * Tidak ditampilkan ketika Add/Edit.
              */
-            if (!isEditing) {
+            if (!isSubScreen) {
 
                 HorizontalPager(
 

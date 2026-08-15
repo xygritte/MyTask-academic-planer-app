@@ -3,7 +3,6 @@ package com.mytask.navigation
 sealed class Screen(
     val route: String
 ) {
-
     data object Dashboard :
         Screen("dashboard")
 
@@ -27,4 +26,8 @@ sealed class Screen(
 
     data object Profile :
         Screen("profile")
+
+
+    data object NotificationSettings :
+        Screen("notification_settings")
 }

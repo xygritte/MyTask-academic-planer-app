@@ -12,6 +12,7 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.navArgument
 import com.mytask.ui.course.AddEditCourseScreen
+import com.mytask.ui.profile.NotificationSettingsScreen
 import com.mytask.ui.task.AddEditTaskScreen
 
 @Composable
@@ -45,6 +46,20 @@ fun NavGraph(
 
     ) {
 
+        composable(
+            Screen.NotificationSettings.route
+        ) {
+
+            NotificationSettingsScreen(
+
+                onBack = {
+
+                    navController
+                        .popBackStack()
+                }
+            )
+        }
+
         /*
          * =========================================
          * IDLE
@@ -53,6 +68,8 @@ fun NavGraph(
          * Harus ada agar NavHost selalu aktif,
          * tetapi tidak menggambar apa pun.
          */
+
+
         composable(
             "navigation_idle"
         ) {
