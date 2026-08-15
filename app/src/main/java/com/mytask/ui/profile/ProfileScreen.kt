@@ -2,6 +2,7 @@
 
 package com.mytask.ui.profile
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -10,22 +11,26 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowForwardIos
 import androidx.compose.material.icons.filled.Cloud
 import androidx.compose.material.icons.filled.Notifications
+import androidx.compose.material.icons.filled.Person
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -37,25 +42,19 @@ import com.mytask.R
 
 @Composable
 fun ProfileScreen(
-
     onBack: () -> Unit = {},
-
     onNotificationSettings: () -> Unit = {},
-
     onBackupData: () -> Unit = {}
-
 ) {
 
     Scaffold(
 
         topBar = {
-
             TopAppBar(
-
                 title = {
-
                     Text(
-                        "Profil"
+                        text = "Profil",
+                        fontWeight = FontWeight.Bold
                     )
                 }
             )
@@ -64,27 +63,14 @@ fun ProfileScreen(
     ) { paddingValues ->
 
         Column(
-
-            modifier =
-                Modifier
-                    .fillMaxSize()
-                    .padding(
-                        paddingValues
-                    )
-                    .padding(
-                        horizontal = 16.dp
-                    ),
-
-            verticalArrangement =
-                Arrangement.spacedBy(
-                    16.dp
-                )
-
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(paddingValues)
+                .padding(horizontal = 16.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
 
-            Spacer(
-                Modifier.height(8.dp)
-            )
+            Spacer(Modifier.height(4.dp))
 
             /*
              * =========================================
@@ -93,147 +79,99 @@ fun ProfileScreen(
              */
 
             Card(
-
-                modifier =
-                    Modifier.fillMaxWidth(),
-
-                shape =
-                    MaterialTheme
-                        .shapes
-                        .extraLarge,
-
-                colors =
-                    CardDefaults.cardColors(
-
-                        containerColor =
-                            MaterialTheme
-                                .colorScheme
-                                .surfaceVariant
+                modifier = Modifier.fillMaxWidth(),
+                shape = MaterialTheme.shapes.extraLarge,
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.surface
+                ),
+                border = BorderStroke(
+                    1.dp,
+                    MaterialTheme.colorScheme.outline.copy(
+                        alpha = 0.45f
                     )
-
+                )
             ) {
 
-                Column(
-
-                    modifier =
-                        Modifier
-                            .fillMaxWidth()
-                            .padding(
-                                24.dp
-                            ),
-
-                    horizontalAlignment =
-                        Alignment.CenterHorizontally
-
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(20.dp),
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
 
-                    /*
-                     * Avatar sementara menggunakan
-                     * launcher icon MyTask.
-                     *
-                     * Nanti dapat diganti dengan
-                     * foto/profile image pengguna.
-                     */
-
-                    Image(
-
-                        painter =
-                            painterResource(
-                                id =
-                                    R.mipmap.mytask_background
+                    Surface(
+                        modifier = Modifier.size(72.dp),
+                        shape = CircleShape,
+                        color = MaterialTheme.colorScheme.secondaryContainer
+                    ) {
+                        Image(
+                            painter = painterResource(
+                                id = R.mipmap.mytask_background
                             ),
-
-                        contentDescription =
-                            "Avatar",
-
-                        modifier =
-                            Modifier
-                                .size(
-                                    92.dp
-                                )
-                                .clip(
-                                    CircleShape
-                                )
-                    )
-
-                    Spacer(
-                        Modifier.height(
-                            16.dp
+                            contentDescription = "Avatar",
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .clip(CircleShape)
                         )
-                    )
+                    }
 
-                    Text(
+                    Spacer(Modifier.size(16.dp))
 
-                        text =
-                            "Mahasiswa",
+                    Column(
+                        modifier = Modifier.weight(1f)
+                    ) {
 
-                        style =
-                            MaterialTheme
-                                .typography
-                                .headlineSmall,
-
-                        fontWeight =
-                            FontWeight.Bold
-                    )
-
-                    Spacer(
-                        Modifier.height(
-                            4.dp
+                        Text(
+                            text = "Mahasiswa",
+                            style = MaterialTheme.typography.headlineSmall,
+                            fontWeight = FontWeight.Bold
                         )
-                    )
 
-                    Text(
+                        Spacer(Modifier.height(2.dp))
 
-                        text =
-                            "Teknik Informatika",
+                        Text(
+                            text = "Teknik Informatika",
+                            style = MaterialTheme.typography.bodyLarge,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
 
-                        style =
-                            MaterialTheme
-                                .typography
-                                .bodyLarge
-                    )
+                        Spacer(Modifier.height(6.dp))
+
+                        Surface(
+                            shape = RoundedCornerShape(8.dp),
+                            color = MaterialTheme.colorScheme.primaryContainer
+                        ) {
+                            Text(
+                                text = "Mahasiswa",
+                                style = MaterialTheme.typography.labelMedium,
+                                color = MaterialTheme.colorScheme.onPrimaryContainer,
+                                modifier = Modifier.padding(
+                                    horizontal = 8.dp,
+                                    vertical = 5.dp
+                                )
+                            )
+                        }
+                    }
                 }
             }
 
-            /*
-             * =========================================
-             * SETTINGS SECTION
-             * =========================================
-             */
-
             Text(
-
-                text =
-                    "Pengaturan",
-
-                style =
-                    MaterialTheme
-                        .typography
-                        .titleMedium,
-
-                fontWeight =
-                    FontWeight.Bold
+                text = "Pengaturan",
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.Bold
             )
 
             /*
              * =========================================
-             * NOTIFICATION
+             * NOTIFIKASI
              * =========================================
              */
 
             ProfileMenuCard(
-
-                icon =
-                    Icons.Default.Notifications,
-
-                title =
-                    "Notifikasi",
-
-                description =
-                    "Atur pengingat deadline dan tugas aktif.",
-
-                onClick =
-                    onNotificationSettings
+                icon = Icons.Default.Notifications,
+                title = "Notifikasi",
+                description = "Atur pengingat deadline dan tugas aktif.",
+                onClick = onNotificationSettings
             )
 
             /*
@@ -243,198 +181,135 @@ fun ProfileScreen(
              */
 
             ProfileMenuCard(
-
-                icon =
-                    Icons.Default.Cloud,
-
-                title =
-                    "Backup & Data",
-
-                description =
-                    "Ekspor dan impor data MyTask.",
-
-                onClick =
-                    onBackupData
+                icon = Icons.Default.Cloud,
+                title = "Backup & Data",
+                description = "Ekspor dan impor data MyTask.",
+                onClick = onBackupData
             )
 
-            Spacer(
-                Modifier.height(
-                    8.dp
+            Spacer(Modifier.height(4.dp))
+
+            HorizontalDivider(
+                color = MaterialTheme.colorScheme.outline.copy(
+                    alpha = 0.25f
                 )
             )
 
             Text(
+                text = "Tentang",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold
+            )
 
-                text =
-                    "MyTask Academic Planner",
-
-                style =
-                    MaterialTheme
-                        .typography
-                        .bodySmall,
-
-                color =
-                    MaterialTheme
-                        .colorScheme
-                        .onSurfaceVariant
+            AboutRow(
+                icon = Icons.Default.Person,
+                label = "MyTask Academic Planner"
             )
         }
     }
 }
 
-
-/*
- * =====================================================
- * PROFILE MENU CARD
- * =====================================================
- */
-
 @Composable
 private fun ProfileMenuCard(
-
-    icon:
-    androidx.compose.ui.graphics.vector.ImageVector,
-
-    title:
-    String,
-
-    description:
-    String,
-
-    onClick:
-        () -> Unit
-
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    title: String,
+    description: String,
+    onClick: () -> Unit
 ) {
 
     Card(
-
-        modifier =
-            Modifier
-                .fillMaxWidth()
-                .clickable {
-                    onClick()
-                },
-
-        shape =
-            MaterialTheme
-                .shapes
-                .large,
-
-        colors =
-            CardDefaults.cardColors(
-
-                containerColor =
-                    MaterialTheme
-                        .colorScheme
-                        .surface
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick),
+        shape = MaterialTheme.shapes.large,
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surface
+        ),
+        border = BorderStroke(
+            1.dp,
+            MaterialTheme.colorScheme.outline.copy(
+                alpha = 0.45f
             )
-
+        )
     ) {
 
         Row(
-
-            modifier =
-                Modifier
-                    .fillMaxWidth()
-                    .padding(
-                        18.dp
-                    ),
-
-            verticalAlignment =
-                Alignment.CenterVertically
-
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically
         ) {
 
-            Icon(
-
-                imageVector =
-                    icon,
-
-                contentDescription =
-                    null,
-
-                tint =
-                    MaterialTheme
-                        .colorScheme
-                        .primary,
-
-                modifier =
-                    Modifier.size(
-                        28.dp
-                    )
-            )
-
-            Spacer(
-                Modifier.size(
-                    16.dp
+            Surface(
+                modifier = Modifier.size(44.dp),
+                shape = RoundedCornerShape(12.dp),
+                color = MaterialTheme.colorScheme.secondaryContainer
+            ) {
+                Icon(
+                    imageVector = icon,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.padding(10.dp)
                 )
-            )
+            }
+
+            Spacer(Modifier.size(14.dp))
 
             Column(
-
-                modifier =
-                    Modifier.weight(
-                        1f
-                    )
-
+                modifier = Modifier.weight(1f)
             ) {
 
                 Text(
-
-                    text =
-                        title,
-
-                    style =
-                        MaterialTheme
-                            .typography
-                            .titleMedium,
-
-                    fontWeight =
-                        FontWeight.SemiBold
+                    text = title,
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold
                 )
 
-                Spacer(
-                    Modifier.height(
-                        2.dp
-                    )
-                )
+                Spacer(Modifier.height(2.dp))
 
                 Text(
-
-                    text =
-                        description,
-
-                    style =
-                        MaterialTheme
-                            .typography
-                            .bodySmall,
-
-                    color =
-                        MaterialTheme
-                            .colorScheme
-                            .onSurfaceVariant
+                    text = description,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
 
             Icon(
-
-                imageVector =
-                    Icons.Default
-                        .ArrowForwardIos,
-
-                contentDescription =
-                    "Buka",
-
-                modifier =
-                    Modifier.size(
-                        16.dp
-                    ),
-
-                tint =
-                    MaterialTheme
-                        .colorScheme
-                        .onSurfaceVariant
+                imageVector = Icons.Default.ArrowForwardIos,
+                contentDescription = "Buka",
+                modifier = Modifier.size(16.dp),
+                tint = MaterialTheme.colorScheme.onSurfaceVariant
             )
         }
+    }
+}
+
+@Composable
+private fun AboutRow(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    label: String
+) {
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 2.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+
+        Icon(
+            imageVector = icon,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.size(20.dp)
+        )
+
+        Spacer(Modifier.size(10.dp))
+
+        Text(
+            text = label,
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
     }
 }
