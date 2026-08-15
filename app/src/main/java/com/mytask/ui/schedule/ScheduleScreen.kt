@@ -31,7 +31,6 @@ import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FloatingActionButton
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -49,8 +48,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.mytask.data.local.entity.CourseEntity
@@ -60,32 +57,20 @@ import com.mytask.data.local.entity.ScheduleEntity
 fun ScheduleScreen(
     viewModel: ScheduleViewModel = hiltViewModel()
 ) {
-
     val schedules by viewModel.schedules.collectAsState()
     val courses by viewModel.courses.collectAsState()
 
-    var editingScheduleId by remember {
-        mutableStateOf<Long?>(null)
-    }
+    var editingScheduleId by remember { mutableStateOf<Long?>(null) }
 
     Scaffold(
-
         topBar = {
             TopAppBar(
-                title = {
-                    Text(
-                        text = "Jadwal Kuliah",
-                        fontWeight = FontWeight.Bold
-                    )
-                }
+                title = { Text("Jadwal Kuliah") }
             )
         },
-
         floatingActionButton = {
             FloatingActionButton(
-                onClick = {
-                    editingScheduleId = -1L
-                }
+                onClick = { editingScheduleId = -1L }
             ) {
                 Icon(
                     imageVector = Icons.Default.Add,
@@ -93,77 +78,76 @@ fun ScheduleScreen(
                 )
             }
         }
-
     ) { paddingValues ->
+        when {
+            editingScheduleId != null -> {
+                ScheduleForm(
+                    scheduleId = editingScheduleId?.takeIf { it != -1L },
+                    courses = courses,
+                    viewModel = viewModel,
+                    onCancel = { editingScheduleId = null },
+                    onSaved = { editingScheduleId = null }
+                )
+            }
 
-        if (editingScheduleId != null) {
+            schedules.isEmpty() -> {
+                EmptyScheduleState(paddingValues)
+            }
 
-            ScheduleForm(
-                scheduleId = editingScheduleId?.takeIf { it != -1L },
-                courses = courses,
-                viewModel = viewModel,
-                onCancel = {
-                    editingScheduleId = null
-                },
-                onSaved = {
-                    editingScheduleId = null
-                }
-            )
+            else -> {
+                LazyColumn(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(paddingValues),
+                    contentPadding = PaddingValues(
+                        start = 16.dp,
+                        top = 8.dp,
+                        end = 16.dp,
+                        bottom = 112.dp
+                    ),
+                    verticalArrangement = Arrangement.spacedBy(20.dp)
+                ) {
+                    dayGroups.forEach { (dayNumber, dayName) ->
+                        val daySchedules = schedules
+                            .filter { it.dayOfWeek == dayNumber }
+                            .sortedBy { it.startTime }
 
-        } else if (schedules.isEmpty()) {
-
-            EmptyScheduleState(
-                paddingValues = paddingValues
-            )
-
-        } else {
-
-            LazyColumn(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(paddingValues),
-                contentPadding = PaddingValues(
-                    horizontal = 16.dp,
-                    top = 8.dp,
-                    bottom = 112.dp
-                ),
-                verticalArrangement = Arrangement.spacedBy(20.dp)
-            ) {
-
-                dayGroups.forEach { (dayNumber, dayName) ->
-
-                    val daySchedules = schedules
-                        .filter { it.dayOfWeek == dayNumber }
-                        .sortedBy { it.startTime }
-
-                    if (daySchedules.isNotEmpty()) {
-
-                        item(key = "day_$dayNumber") {
-                            ScheduleDayHeader(
-                                dayName = dayName,
-                                scheduleCount = daySchedules.size
-                            )
-                        }
-
-                        items(
-                            items = daySchedules,
-                            key = { it.id }
-                        ) { schedule ->
-
-                            val course = courses.find {
-                                it.id == schedule.courseId
+                        if (daySchedules.isNotEmpty()) {
+                            item(key = "day_$dayNumber") {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(
+                                        text = dayName,
+                                        style = MaterialTheme.typography.titleLarge,
+                                        modifier = Modifier.weight(1f)
+                                    )
+                                    Text(
+                                        text = "${daySchedules.size} jadwal",
+                                        style = MaterialTheme.typography.labelMedium,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
                             }
 
-                            ScheduleCard(
-                                schedule = schedule,
-                                courseName = course?.name ?: "Mata Kuliah",
-                                onEdit = {
-                                    editingScheduleId = schedule.id
-                                },
-                                onDelete = {
-                                    viewModel.deleteSchedule(schedule)
-                                }
-                            )
+                            items(
+                                items = daySchedules,
+                                key = { it.id }
+                            ) { schedule ->
+                                ScheduleCard(
+                                    schedule = schedule,
+                                    courseName = courses.find {
+                                        it.id == schedule.courseId
+                                    }?.name ?: "Mata Kuliah",
+                                    onEdit = {
+                                        editingScheduleId = schedule.id
+                                    },
+                                    onDelete = {
+                                        viewModel.deleteSchedule(schedule)
+                                    }
+                                )
+                            }
                         }
                     }
                 }
@@ -183,37 +167,12 @@ private val dayGroups = listOf(
 )
 
 @Composable
-private fun ScheduleDayHeader(
-    dayName: String,
-    scheduleCount: Int
-) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Text(
-            text = dayName,
-            style = MaterialTheme.typography.titleLarge,
-            fontWeight = FontWeight.Bold,
-            modifier = Modifier.weight(1f)
-        )
-
-        Text(
-            text = "$scheduleCount jadwal",
-            style = MaterialTheme.typography.labelMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
-        )
-    }
-}
-
-@Composable
 private fun ScheduleCard(
     schedule: ScheduleEntity,
     courseName: String,
     onEdit: () -> Unit,
     onDelete: () -> Unit
 ) {
-
     Card(
         modifier = Modifier.fillMaxWidth(),
         shape = MaterialTheme.shapes.large,
@@ -231,14 +190,10 @@ private fun ScheduleCard(
                 .padding(horizontal = 14.dp, vertical = 12.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-
-            Column(
-                modifier = Modifier.width(68.dp)
-            ) {
+            Column(modifier = Modifier.width(68.dp)) {
                 Text(
                     text = schedule.startTime,
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold
+                    style = MaterialTheme.typography.titleMedium
                 )
                 Text(
                     text = schedule.endTime,
@@ -257,17 +212,12 @@ private fun ScheduleCard(
 
             Spacer(Modifier.width(12.dp))
 
-            Column(
-                modifier = Modifier.weight(1f)
-            ) {
+            Column(modifier = Modifier.weight(1f)) {
                 Text(
                     text = courseName,
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.SemiBold
+                    style = MaterialTheme.typography.titleMedium
                 )
-
                 if (schedule.room.isNotBlank()) {
-                    Spacer(Modifier.height(2.dp))
                     Text(
                         text = schedule.room,
                         style = MaterialTheme.typography.bodySmall,
@@ -276,25 +226,17 @@ private fun ScheduleCard(
                 }
             }
 
-            IconButton(
-                onClick = onEdit,
-                modifier = Modifier.size(40.dp)
-            ) {
+            IconButton(onClick = onEdit) {
                 Icon(
                     imageVector = Icons.Default.Edit,
-                    contentDescription = "Edit Jadwal",
-                    modifier = Modifier.size(20.dp)
+                    contentDescription = "Edit Jadwal"
                 )
             }
 
-            IconButton(
-                onClick = onDelete,
-                modifier = Modifier.size(40.dp)
-            ) {
+            IconButton(onClick = onDelete) {
                 Icon(
                     imageVector = Icons.Default.Delete,
-                    contentDescription = "Hapus Jadwal",
-                    modifier = Modifier.size(20.dp)
+                    contentDescription = "Hapus Jadwal"
                 )
             }
         }
@@ -332,8 +274,7 @@ private fun EmptyScheduleState(
 
         Text(
             text = "Belum ada jadwal",
-            style = MaterialTheme.typography.titleLarge,
-            fontWeight = FontWeight.Bold
+            style = MaterialTheme.typography.titleLarge
         )
 
         Spacer(Modifier.height(6.dp))
@@ -354,65 +295,38 @@ private fun ScheduleForm(
     onCancel: () -> Unit,
     onSaved: () -> Unit
 ) {
-
     val scheduleFlow = remember(scheduleId) {
         scheduleId?.let { viewModel.getScheduleById(it) }
     }
 
     val schedule by (
         scheduleFlow?.collectAsState()
-            ?: remember { mutableStateOf(null) }
+            ?: remember { mutableStateOf<ScheduleEntity?>(null) }
         )
 
     var selectedCourse by remember(scheduleId) {
         mutableStateOf<CourseEntity?>(null)
     }
-
-    var courseExpanded by remember(scheduleId) {
-        mutableStateOf(false)
-    }
-
-    var day by remember(scheduleId) {
-        mutableStateOf(2)
-    }
-
-    var dayName by remember(scheduleId) {
-        mutableStateOf("Senin")
-    }
-
-    var dayExpanded by remember(scheduleId) {
-        mutableStateOf(false)
-    }
-
-    var startTime by remember(scheduleId) {
-        mutableStateOf("08:00")
-    }
-
-    var endTime by remember(scheduleId) {
-        mutableStateOf("10:00")
-    }
-
-    var room by remember(scheduleId) {
-        mutableStateOf("")
-    }
+    var courseExpanded by remember(scheduleId) { mutableStateOf(false) }
+    var day by remember(scheduleId) { mutableStateOf(2) }
+    var dayName by remember(scheduleId) { mutableStateOf("Senin") }
+    var dayExpanded by remember(scheduleId) { mutableStateOf(false) }
+    var startTime by remember(scheduleId) { mutableStateOf("08:00") }
+    var endTime by remember(scheduleId) { mutableStateOf("10:00") }
+    var room by remember(scheduleId) { mutableStateOf("") }
 
     LaunchedEffect(scheduleId, schedule, courses) {
-
-        if (scheduleId == null) {
-            return@LaunchedEffect
-        }
+        if (scheduleId == null) return@LaunchedEffect
 
         val currentSchedule = schedule ?: return@LaunchedEffect
 
         selectedCourse = courses.find {
             it.id == currentSchedule.courseId
         }
-
         day = currentSchedule.dayOfWeek
         dayName = dayGroups.firstOrNull {
             it.first == currentSchedule.dayOfWeek
         }?.second ?: "Senin"
-
         startTime = currentSchedule.startTime
         endTime = currentSchedule.endTime
         room = currentSchedule.room
@@ -422,23 +336,12 @@ private fun ScheduleForm(
         modifier = Modifier
             .fillMaxWidth()
             .padding(16.dp),
-        shape = MaterialTheme.shapes.large,
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surface
-        )
+        shape = MaterialTheme.shapes.large
     ) {
-        Column(
-            modifier = Modifier.padding(16.dp)
-        ) {
-
+        Column(modifier = Modifier.padding(16.dp)) {
             Text(
-                text = if (scheduleId == null) {
-                    "Tambah Jadwal"
-                } else {
-                    "Edit Jadwal"
-                },
-                style = MaterialTheme.typography.titleLarge,
-                fontWeight = FontWeight.Bold
+                text = if (scheduleId == null) "Tambah Jadwal" else "Edit Jadwal",
+                style = MaterialTheme.typography.titleLarge
             )
 
             Spacer(Modifier.height(12.dp))
@@ -465,9 +368,7 @@ private fun ScheduleForm(
             ) {
                 courses.forEach { course ->
                     DropdownMenuItem(
-                        text = {
-                            Text("${course.code} - ${course.name}")
-                        },
+                        text = { Text("${course.code} - ${course.name}") },
                         onClick = {
                             selectedCourse = course
                             courseExpanded = false
@@ -522,7 +423,6 @@ private fun ScheduleForm(
                     label = { Text("Mulai") },
                     singleLine = true
                 )
-
                 OutlinedTextField(
                     value = endTime,
                     onValueChange = { endTime = it },
@@ -557,8 +457,7 @@ private fun ScheduleForm(
 
                 Button(
                     onClick = {
-                        val course = selectedCourse
-                            ?: return@Button
+                        val course = selectedCourse ?: return@Button
 
                         if (scheduleId == null) {
                             viewModel.addSchedule(
@@ -570,8 +469,7 @@ private fun ScheduleForm(
                                 onSaved = onSaved
                             )
                         } else {
-                            val currentSchedule = schedule
-                                ?: return@Button
+                            val currentSchedule = schedule ?: return@Button
 
                             viewModel.updateSchedule(
                                 currentSchedule.copy(
