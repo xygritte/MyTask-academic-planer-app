@@ -71,8 +71,6 @@ fun DashboardScreen(
     val courses by viewModel.courses.collectAsState()
     val schedules by viewModel.schedules.collectAsState()
 
-    val completedTaskCount = tasks.count { it.isCompleted }
-
     val today = Calendar.getInstance().get(Calendar.DAY_OF_WEEK)
     val todaySchedules = schedules
         .filter { it.dayOfWeek == today }
@@ -82,6 +80,15 @@ fun DashboardScreen(
         .filter { !it.isCompleted }
         .sortedBy { it.deadline?.time ?: Long.MAX_VALUE }
         .take(5)
+
+    val completedTaskCount =
+        tasks.count { it.isCompleted }
+
+    val overdueTaskCount =
+        tasks.count { task ->
+            !task.isCompleted &&
+                    task.deadline?.let(::isOverdue) == true
+        }
 
     Scaffold(
         topBar = {
@@ -152,7 +159,6 @@ fun DashboardScreen(
 
             item {
                 Column(
-                    modifier = Modifier.fillMaxWidth(),
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
                     Row(
@@ -175,13 +181,26 @@ fun DashboardScreen(
                         )
                     }
 
-                    OverviewCard(
-                        title = "Tugas Selesai",
-                        value = completedTaskCount.toString(),
-                        icon = Icons.Default.CheckCircle,
+                    Row(
                         modifier = Modifier.fillMaxWidth(),
-                        onClick = onTasksClick
-                    )
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        OverviewCard(
+                            title = "Tugas Selesai",
+                            value = completedTaskCount.toString(),
+                            icon = Icons.Default.CheckCircle,
+                            modifier = Modifier.weight(1f),
+                            onClick = onTasksClick
+                        )
+                        OverviewCard(
+                            title = "Tugas Terlewat",
+                            value = overdueTaskCount.toString(),
+                            icon = Icons.Default.Schedule,
+                            modifier = Modifier.weight(1f),
+                            isAlert = overdueTaskCount > 0,
+                            onClick = onTasksClick
+                        )
+                    }
                 }
             }
 
@@ -353,17 +372,26 @@ private fun OverviewCard(
     value: String,
     icon: androidx.compose.ui.graphics.vector.ImageVector,
     modifier: Modifier,
+    isAlert: Boolean = false,
     onClick: () -> Unit
 ) {
     Card(
         modifier = modifier.clickable(onClick = onClick),
         shape = MaterialTheme.shapes.large,
         colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surface
+            containerColor = if (isAlert) {
+                MaterialTheme.colorScheme.errorContainer
+            } else {
+                MaterialTheme.colorScheme.surface
+            }
         ),
         border = BorderStroke(
             1.dp,
-            MaterialTheme.colorScheme.outline.copy(alpha = 0.45f)
+            if (isAlert) {
+                MaterialTheme.colorScheme.error.copy(alpha = 0.45f)
+            } else {
+                MaterialTheme.colorScheme.outline.copy(alpha = 0.45f)
+            }
         )
     ) {
         Column(
@@ -374,13 +402,21 @@ private fun OverviewCard(
             Surface(
                 modifier = Modifier.size(34.dp),
                 shape = RoundedCornerShape(10.dp),
-                color = MaterialTheme.colorScheme.secondaryContainer
+                color = if (isAlert) {
+                    MaterialTheme.colorScheme.error.copy(alpha = 0.14f)
+                } else {
+                    MaterialTheme.colorScheme.secondaryContainer
+                }
             ) {
                 Box(contentAlignment = Alignment.Center) {
                     Icon(
                         imageVector = icon,
                         contentDescription = null,
-                        tint = MaterialTheme.colorScheme.primary,
+                        tint = if (isAlert) {
+                            MaterialTheme.colorScheme.error
+                        } else {
+                            MaterialTheme.colorScheme.primary
+                        },
                         modifier = Modifier.size(21.dp)
                     )
                 }
@@ -389,13 +425,22 @@ private fun OverviewCard(
             Text(
                 text = value,
                 style = MaterialTheme.typography.headlineSmall,
-                fontWeight = FontWeight.Bold
+                fontWeight = FontWeight.Bold,
+                color = if (isAlert) {
+                    MaterialTheme.colorScheme.onErrorContainer
+                } else {
+                    MaterialTheme.colorScheme.onSurface
+                }
             )
             Spacer(Modifier.height(2.dp))
             Text(
                 text = title,
                 style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
+                color = if (isAlert) {
+                    MaterialTheme.colorScheme.onErrorContainer.copy(alpha = 0.85f)
+                } else {
+                    MaterialTheme.colorScheme.onSurfaceVariant
+                }
             )
         }
     }
