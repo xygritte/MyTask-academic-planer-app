@@ -194,7 +194,7 @@ fun ProfileScreen(
 
             AboutRow(
                 icon = Icons.Default.Person,
-                label = "MyTask Academic Planner\nAcademic Planner"
+                label = "MyTask Academic Planner\napp by Furqon Ramadhani"
             )
         }
     }
