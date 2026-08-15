@@ -1,0 +1,39 @@
+{
+  "app": "MyTask",
+  "template": "universal_academic_starter",
+  "version": 1,
+  "courses": [
+    {"id": 1, "name": "Mata Kuliah 1", "code": "1 SKS", "lecturer": "Dosen 1", "room": "Ruang 1"},
+    {"id": 2, "name": "Mata Kuliah 2", "code": "1 SKS", "lecturer": "Dosen 2", "room": "Ruang 2"},
+    {"id": 3, "name": "Mata Kuliah 3", "code": "1 SKS", "lecturer": "Dosen 3", "room": "Ruang 3"},
+    {"id": 4, "name": "Mata Kuliah 4", "code": "1 SKS", "lecturer": "Dosen 4", "room": "Ruang 4"},
+    {"id": 5, "name": "Mata Kuliah 5", "code": "1 SKS", "lecturer": "Dosen 5", "room": "Ruang 5"},
+    {"id": 6, "name": "Mata Kuliah 6", "code": "1 SKS", "lecturer": "Dosen 6", "room": "Ruang 6"},
+    {"id": 7, "name": "Mata Kuliah 7", "code": "1 SKS", "lecturer": "Dosen 7", "room": "Ruang 7"}
+  ],
+  "tasks": [
+    {"id": 1, "courseId": 1, "title": "Tugas 1", "description": "Deskripsi tugas 1", "deadlineOffsetDays": 1, "priority": 1, "isCompleted": false},
+    {"id": 2, "courseId": 1, "title": "Tugas 2", "description": "Deskripsi tugas 2", "deadlineOffsetDays": 2, "priority": 2, "isCompleted": false},
+    {"id": 3, "courseId": 2, "title": "Tugas 3", "description": "Deskripsi tugas 3", "deadlineOffsetDays": 3, "priority": 3, "isCompleted": false},
+    {"id": 4, "courseId": 2, "title": "Tugas 4", "description": "Deskripsi tugas 4", "deadlineOffsetDays": 4, "priority": 1, "isCompleted": false},
+    {"id": 5, "courseId": 3, "title": "Tugas 5", "description": "Deskripsi tugas 5", "deadlineOffsetDays": 5, "priority": 2, "isCompleted": false},
+    {"id": 6, "courseId": 3, "title": "Tugas 6", "description": "Deskripsi tugas 6", "deadlineOffsetDays": 6, "priority": 3, "isCompleted": false},
+    {"id": 7, "courseId": 4, "title": "Tugas 7", "description": "Deskripsi tugas 7", "deadlineOffsetDays": 7, "priority": 1, "isCompleted": false},
+    {"id": 8, "courseId": 4, "title": "Tugas 8", "description": "Deskripsi tugas 8", "deadlineOffsetDays": 8, "priority": 2, "isCompleted": false},
+    {"id": 9, "courseId": 5, "title": "Tugas 9", "description": "Deskripsi tugas 9", "deadlineOffsetDays": 9, "priority": 3, "isCompleted": false},
+    {"id": 10, "courseId": 5, "title": "Tugas 10", "description": "Deskripsi tugas 10", "deadlineOffsetDays": 10, "priority": 1, "isCompleted": false},
+    {"id": 11, "courseId": 6, "title": "Tugas 11", "description": "Deskripsi tugas 11", "deadlineOffsetDays": 11, "priority": 2, "isCompleted": false},
+    {"id": 12, "courseId": 6, "title": "Tugas 12", "description": "Deskripsi tugas 12", "deadlineOffsetDays": 12, "priority": 3, "isCompleted": false},
+    {"id": 13, "courseId": 7, "title": "Tugas 13", "description": "Deskripsi tugas 13", "deadlineOffsetDays": 13, "priority": 1, "isCompleted": false},
+    {"id": 14, "courseId": 7, "title": "Tugas 14", "description": "Deskripsi tugas 14", "deadlineOffsetDays": 14, "priority": 2, "isCompleted": false}
+  ],
+  "schedules": [
+    {"id": 1, "courseId": 1, "dayOfWeek": 1, "startTime": "08:00", "endTime": "09:30", "room": "Ruang 1"},
+    {"id": 2, "courseId": 2, "dayOfWeek": 2, "startTime": "09:00", "endTime": "10:30", "room": "Ruang 2"},
+    {"id": 3, "courseId": 3, "dayOfWeek": 3, "startTime": "10:00", "endTime": "11:30", "room": "Ruang 3"},
+    {"id": 4, "courseId": 4, "dayOfWeek": 4, "startTime": "08:00", "endTime": "09:30", "room": "Ruang 4"},
+    {"id": 5, "courseId": 5, "dayOfWeek": 5, "startTime": "13:00", "endTime": "14:30", "room": "Ruang 5"},
+    {"id": 6, "courseId": 6, "dayOfWeek": 6, "startTime": "09:00", "endTime": "10:30", "room": "Ruang 6"},
+    {"id": 7, "courseId": 7, "dayOfWeek": 7, "startTime": "10:00", "endTime": "11:30", "room": "Ruang 7"}
+  ]
+}
