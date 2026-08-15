@@ -1,7 +1,9 @@
 package com.mytask.ui.login
 
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -9,14 +11,19 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Login
+import androidx.compose.material.icons.filled.PersonOutline
+import androidx.compose.material.icons.filled.School
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
@@ -30,6 +37,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
@@ -49,161 +57,293 @@ fun LoginScreen(
 
     val scope = rememberCoroutineScope()
 
-    Column(
+    Box(
         modifier = Modifier
             .fillMaxSize()
-            .verticalScroll(rememberScrollState())
-            .padding(
-                horizontal = 24.dp,
-                vertical = 32.dp
-            ),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Top
+            .background(
+                MaterialTheme.colorScheme.background
+            )
     ) {
 
-        Spacer(Modifier.height(56.dp))
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .verticalScroll(
+                    rememberScrollState()
+                ),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
 
-        Image(
-            painter = painterResource(R.mipmap.mytask_background),
-            contentDescription = "MyTask",
-            modifier = Modifier.size(88.dp)
-        )
+            /*
+             * =========================================
+             * BRAND HERO
+             * =========================================
+             */
 
-        Spacer(Modifier.height(18.dp))
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(
+                        RoundedCornerShape(
+                            bottomStart = 32.dp,
+                            bottomEnd = 32.dp
+                        )
+                    )
+                    .background(
+                        MaterialTheme.colorScheme.primaryContainer
+                    )
+                    .padding(
+                        top = 48.dp,
+                        start = 24.dp,
+                        end = 24.dp,
+                        bottom = 72.dp
+                    ),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
 
-        Text(
-            text = "Selamat datang di MyTask",
-            style = MaterialTheme.typography.headlineSmall,
-            fontWeight = FontWeight.Bold,
-            color = MaterialTheme.colorScheme.onBackground
-        )
+                Image(
+                    painter = painterResource(
+                        R.mipmap.mytask_background
+                    ),
+                    contentDescription = "MyTask",
+                    modifier = Modifier
+                        .size(82.dp)
+                        .clip(
+                            RoundedCornerShape(22.dp)
+                        )
+                )
 
-        Spacer(Modifier.height(6.dp))
+                Spacer(
+                    Modifier.height(16.dp)
+                )
 
-        Text(
-            text = "Siapkan profil mahasiswa kamu untuk mulai mengatur tugas, jadwal, dan perkuliahan.",
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.fillMaxWidth()
-        )
+                Text(
+                    text = "MyTask",
+                    style = MaterialTheme.typography.displaySmall,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onPrimaryContainer
+                )
 
-        Spacer(Modifier.height(24.dp))
+                Spacer(
+                    Modifier.height(2.dp)
+                )
 
-        OutlinedTextField(
-            value = name,
-            onValueChange = {
-                name = it
-                showError = false
-            },
-            modifier = Modifier.fillMaxWidth(),
-            label = {
-                Text("Nama Mahasiswa")
-            },
-            placeholder = {
-                Text("Contoh: Ahmad Furqon Ramadhani")
-            },
-            singleLine = true,
-            shape = RoundedCornerShape(16.dp),
-            colors = OutlinedTextFieldDefaults.colors(
-                focusedTextColor = MaterialTheme.colorScheme.onSurface,
-                unfocusedTextColor = MaterialTheme.colorScheme.onSurface,
-                focusedBorderColor = MaterialTheme.colorScheme.primary,
-                unfocusedBorderColor = MaterialTheme.colorScheme.outline,
-                focusedLabelColor = MaterialTheme.colorScheme.primary,
-                unfocusedLabelColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                focusedPlaceholderColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.65f),
-                unfocusedPlaceholderColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.65f),
-                cursorColor = MaterialTheme.colorScheme.primary
-            )
-        )
+                Text(
+                    text = "Academic Planner",
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = MaterialTheme.colorScheme.onPrimaryContainer.copy(
+                        alpha = 0.78f
+                    )
+                )
+            }
 
-        Spacer(Modifier.height(14.dp))
+            /*
+             * =========================================
+             * FORM CARD
+             * =========================================
+             */
 
-        OutlinedTextField(
-            value = program,
-            onValueChange = {
-                program = it
-                showError = false
-            },
-            modifier = Modifier.fillMaxWidth(),
-            label = {
-                Text("Program Studi")
-            },
-            placeholder = {
-                Text("Contoh: Teknik Informatika")
-            },
-            singleLine = true,
-            keyboardOptions = KeyboardOptions(
-                keyboardType = KeyboardType.Text
-            ),
-            shape = RoundedCornerShape(16.dp),
-            colors = OutlinedTextFieldDefaults.colors(
-                focusedTextColor = MaterialTheme.colorScheme.onSurface,
-                unfocusedTextColor = MaterialTheme.colorScheme.onSurface,
-                focusedBorderColor = MaterialTheme.colorScheme.primary,
-                unfocusedBorderColor = MaterialTheme.colorScheme.outline,
-                focusedLabelColor = MaterialTheme.colorScheme.primary,
-                unfocusedLabelColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                focusedPlaceholderColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.65f),
-                unfocusedPlaceholderColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.65f),
-                cursorColor = MaterialTheme.colorScheme.primary
-            )
-        )
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(
+                        horizontal = 20.dp
+                    )
+                    .padding(
+                        top = 16.dp
+                    ),
+                shape = MaterialTheme.shapes.extraLarge,
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.surface
+                ),
+                elevation = CardDefaults.cardElevation(
+                    defaultElevation = 4.dp
+                )
+            ) {
 
-        if (showError) {
-            Spacer(Modifier.height(8.dp))
-            Text(
-                text = "Nama dan program studi wajib diisi.",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.error,
-                modifier = Modifier.fillMaxWidth()
-            )
-        }
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(22.dp)
+                ) {
 
-        Spacer(Modifier.height(22.dp))
+                    Text(
+                        text = "Siapkan profil kamu",
+                        style = MaterialTheme.typography.headlineSmall,
+                        fontWeight = FontWeight.Bold
+                    )
 
-        Button(
-            onClick = {
-                if (name.isBlank() || program.isBlank()) {
-                    showError = true
-                    return@Button
-                }
+                    Spacer(
+                        Modifier.height(6.dp)
+                    )
 
-                scope.launch {
-                    repository.saveProfile(
-                        name = name,
-                        program = program
+                    Text(
+                        text = "Masukkan nama dan program studi untuk mempersonalisasi MyTask.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+
+                    Spacer(
+                        Modifier.height(20.dp)
+                    )
+
+                    /*
+                     * NAMA
+                     */
+
+                    OutlinedTextField(
+                        value = name,
+                        onValueChange = {
+                            name = it
+                            showError = false
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        label = {
+                            Text("Nama Mahasiswa")
+                        },
+                        leadingIcon = {
+                            Icon(
+                                imageVector = Icons.Default.PersonOutline,
+                                contentDescription = null
+                            )
+                        },
+                        placeholder = {
+                            Text("Nama lengkap")
+                        },
+                        singleLine = true,
+                        shape = RoundedCornerShape(16.dp),
+                        colors = loginFieldColors()
+                    )
+
+                    Spacer(
+                        Modifier.height(12.dp)
+                    )
+
+                    /*
+                     * PROGRAM STUDI
+                     */
+
+                    OutlinedTextField(
+                        value = program,
+                        onValueChange = {
+                            program = it
+                            showError = false
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        label = {
+                            Text("Program Studi")
+                        },
+                        leadingIcon = {
+                            Icon(
+                                imageVector = Icons.Default.School,
+                                contentDescription = null
+                            )
+                        },
+                        placeholder = {
+                            Text("Contoh: Teknik Informatika")
+                        },
+                        singleLine = true,
+                        keyboardOptions = KeyboardOptions(
+                            keyboardType = KeyboardType.Text
+                        ),
+                        shape = RoundedCornerShape(16.dp),
+                        colors = loginFieldColors()
+                    )
+
+                    if (showError) {
+
+                        Spacer(
+                            Modifier.height(8.dp)
+                        )
+
+                        Text(
+                            text = "Nama dan program studi wajib diisi.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.error
+                        )
+                    }
+
+                    Spacer(
+                        Modifier.height(20.dp)
+                    )
+
+                    Button(
+                        onClick = {
+                            if (
+                                name.isBlank() ||
+                                program.isBlank()
+                            ) {
+                                showError = true
+                                return@Button
+                            }
+
+                            scope.launch {
+                                repository.saveProfile(
+                                    name = name.trim(),
+                                    program = program.trim()
+                                )
+                            }
+                        },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(54.dp),
+                        shape = RoundedCornerShape(16.dp),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = MaterialTheme.colorScheme.primary,
+                            contentColor = MaterialTheme.colorScheme.onPrimary
+                        )
+                    ) {
+
+                        Icon(
+                            imageVector = Icons.Default.Login,
+                            contentDescription = null
+                        )
+
+                        Spacer(
+                            Modifier.width(10.dp)
+                        )
+
+                        Text(
+                            text = "Mulai menggunakan MyTask",
+                            fontWeight = FontWeight.SemiBold
+                        )
+                    }
+
+                    Spacer(
+                        Modifier.height(14.dp)
+                    )
+
+                    Text(
+                        text = "Data profil disimpan secara lokal di perangkat.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
-            },
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(52.dp),
-            shape = RoundedCornerShape(16.dp),
-            colors = ButtonDefaults.buttonColors(
-                containerColor = MaterialTheme.colorScheme.primary,
-                contentColor = MaterialTheme.colorScheme.onPrimary
-            )
-        ) {
-            Icon(
-                imageVector = Icons.Default.Login,
-                contentDescription = null
-            )
-            Spacer(Modifier.size(8.dp))
-            Text(
-                text = "Masuk ke MyTask",
-                fontWeight = FontWeight.SemiBold
+            }
+
+            Spacer(
+                Modifier.height(28.dp)
             )
         }
-
-        Spacer(Modifier.height(14.dp))
-
-        Text(
-            text = "Data profil disimpan secara lokal di perangkat.",
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
-        )
-
-        Spacer(Modifier.height(32.dp))
     }
 }
+
+@Composable
+private fun loginFieldColors() =
+    OutlinedTextFieldDefaults.colors(
+        focusedTextColor = MaterialTheme.colorScheme.onSurface,
+        unfocusedTextColor = MaterialTheme.colorScheme.onSurface,
+        focusedBorderColor = MaterialTheme.colorScheme.primary,
+        unfocusedBorderColor = MaterialTheme.colorScheme.outline,
+        focusedLabelColor = MaterialTheme.colorScheme.primary,
+        unfocusedLabelColor = MaterialTheme.colorScheme.onSurfaceVariant,
+        focusedLeadingIconColor = MaterialTheme.colorScheme.primary,
+        unfocusedLeadingIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
+        focusedPlaceholderColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(
+            alpha = 0.65f
+        ),
+        unfocusedPlaceholderColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(
+            alpha = 0.65f
+        ),
+        cursorColor = MaterialTheme.colorScheme.primary
+    )
