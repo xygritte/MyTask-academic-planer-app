@@ -6,9 +6,11 @@ import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
 import com.mytask.data.local.MyTaskDatabase
 import com.mytask.data.local.entity.TaskEntity
+import com.mytask.data.repository.SettingsRepository
 import kotlinx.coroutines.flow.first
 import java.text.SimpleDateFormat
 import java.util.Calendar
+import java.util.Date
 import java.util.Locale
 import java.util.concurrent.TimeUnit
 
@@ -29,11 +31,22 @@ class DailyReminderWorker(
                 "mytask_db"
             ).build()
 
+        val settingsRepository =
+            SettingsRepository(
+                applicationContext
+            )
+
         return try {
 
             NotificationHelper.createChannels(
                 applicationContext
             )
+
+            /*
+             * ==========================================
+             * DATA
+             * ==========================================
+             */
 
             val tasks =
                 database
@@ -41,15 +54,92 @@ class DailyReminderWorker(
                     .getAllTasks()
                     .first()
 
-            // 1. Semua tugas aktif
-            checkActiveTasks(tasks)
+            /*
+             * ==========================================
+             * SETTINGS
+             * ==========================================
+             */
 
-            // 2. Tugas yang deadline hari ini
-            checkTodayTasks(tasks)
+            val reminderDays =
+                settingsRepository
+                    .taskReminderDays
+                    .first()
 
-            // 3. JADWAL
-            // Tidak kita ubah logikanya
-            checkTodaySchedules(database)
+            val activeTaskNotificationEnabled =
+                settingsRepository
+                    .activeTaskNotification
+                    .first()
+
+            /*
+             * ==========================================
+             * 1. TUGAS AKTIF
+             * ==========================================
+             *
+             * Bisa diaktifkan / dinonaktifkan
+             * dari Profile > Notifikasi.
+             */
+
+            if (
+                activeTaskNotificationEnabled
+            ) {
+
+                checkActiveTasks(
+                    tasks
+                )
+
+            } else {
+
+                NotificationHelper
+                    .cancelActiveTasksNotification(
+                        applicationContext
+                    )
+            }
+
+            /*
+             * ==========================================
+             * 2. PENGINGAT DEADLINE
+             * ==========================================
+             *
+             * Aturan:
+             *
+             * reminderDays = 0
+             * → mulai pada hari deadline
+             *
+             * reminderDays = 1
+             * → mulai H-1
+             *
+             * reminderDays = 3
+             * → mulai H-3
+             *
+             * dan seterusnya.
+             *
+             * Setelah melewati deadline,
+             * notifikasi tetap ada selama
+             * tugas belum selesai.
+             */
+
+            checkDeadlineTasks(
+                tasks = tasks,
+                reminderDays = reminderDays
+            )
+
+            /*
+             * ==========================================
+             * 3. JADWAL KULIAH
+             * ==========================================
+             *
+             * Logikanya tetap seperti sebelumnya.
+             */
+
+            checkTodaySchedules(
+                database
+            )
+
+            /*
+             * ==========================================
+             * JADWAL MIDNIGHT BERIKUTNYA
+             * ==========================================
+             */
 
             ReminderScheduler
                 .scheduleNextMidnight(
@@ -69,6 +159,7 @@ class DailyReminderWorker(
             database.close()
         }
     }
+
 
     // =================================================
     // 1. SEMUA TUGAS AKTIF
@@ -106,7 +197,9 @@ class DailyReminderWorker(
                 activeTasks
                     .sortedBy {
                         it.deadline
+                            ?: Date(Long.MAX_VALUE)
                     }
+                    .take(4)
                     .forEachIndexed {
                             index,
                             task ->
@@ -135,12 +228,23 @@ class DailyReminderWorker(
 
                         if (
                             index <
-                            activeTasks.lastIndex
+                            activeTasks
+                                .take(4)
+                                .lastIndex
                         ) {
 
                             append("\n")
                         }
                     }
+
+                if (
+                    activeTasks.size > 4
+                ) {
+
+                    append(
+                        "\n+ ${activeTasks.size - 4} tugas lainnya"
+                    )
+                }
             }
 
         NotificationHelper
@@ -150,55 +254,177 @@ class DailyReminderWorker(
             )
     }
 
+
     // =================================================
-    // 2. TUGAS HARI INI
-    // TIDAK BISA DI-SWIPE
+    // 2. PENGINGAT DEADLINE
+    //
+    // MULAI H-X
+    // TETAP ADA SETELAH DEADLINE
+    // SAMPAI TUGAS SELESAI
     // =================================================
 
-    private fun checkTodayTasks(
-        tasks: List<TaskEntity>
+    private fun checkDeadlineTasks(
+        tasks: List<TaskEntity>,
+        reminderDays: Int
     ) {
 
         val today =
-            Calendar.getInstance()
+            Calendar.getInstance().apply {
 
-        val todayDay =
-            today.get(
-                Calendar.DAY_OF_YEAR
-            )
+                set(
+                    Calendar.HOUR_OF_DAY,
+                    0
+                )
 
-        val todayYear =
-            today.get(
-                Calendar.YEAR
-            )
+                set(
+                    Calendar.MINUTE,
+                    0
+                )
 
-        tasks
-            .filter { task ->
+                set(
+                    Calendar.SECOND,
+                    0
+                )
 
-                val deadline =
-                    task.deadline
-                        ?: return@filter false
-
-                val deadlineCalendar =
-                    Calendar.getInstance()
-
-                deadlineCalendar.time =
-                    deadline
-
-                deadlineCalendar.get(
-                    Calendar.DAY_OF_YEAR
-                ) == todayDay &&
-
-                        deadlineCalendar.get(
-                            Calendar.YEAR
-                        ) == todayYear &&
-
-                        !task.isCompleted
+                set(
+                    Calendar.MILLISECOND,
+                    0
+                )
             }
-            .forEach { task ->
+
+        val reminderStart =
+            Calendar.getInstance().apply {
+
+                time =
+                    today.time
+
+                add(
+                    Calendar.DAY_OF_YEAR,
+                    reminderDays
+                )
+            }
+
+        /*
+         * Semua task memiliki notification state
+         * yang perlu kita sinkronkan.
+         *
+         * Task:
+         *
+         * - selesai
+         * - tidak punya deadline
+         * - deadline masih terlalu jauh
+         *
+         * harus dipastikan tidak meninggalkan
+         * notifikasi permanen lama.
+         */
+
+        tasks.forEach { task ->
+
+            val deadline =
+                task.deadline
+
+            /*
+             * ==========================================
+             * TASK SUDAH SELESAI
+             * ==========================================
+             */
+
+            if (
+                task.isCompleted
+            ) {
+
+                NotificationHelper
+                    .cancelTaskNotification(
+                        applicationContext,
+                        task.id.toString()
+                    )
+
+                return@forEach
+            }
+
+            /*
+             * ==========================================
+             * TASK TIDAK MEMILIKI DEADLINE
+             * ==========================================
+             */
+
+            if (
+                deadline == null
+            ) {
+
+                NotificationHelper
+                    .cancelTaskNotification(
+                        applicationContext,
+                        task.id.toString()
+                    )
+
+                return@forEach
+            }
+
+            /*
+             * ==========================================
+             * NORMALISASI DEADLINE
+             * ==========================================
+             */
+
+            val deadlineDay =
+                Calendar.getInstance().apply {
+
+                    time =
+                        deadline
+
+                    set(
+                        Calendar.HOUR_OF_DAY,
+                        0
+                    )
+
+                    set(
+                        Calendar.MINUTE,
+                        0
+                    )
+
+                    set(
+                        Calendar.SECOND,
+                        0
+                    )
+
+                    set(
+                        Calendar.MILLISECOND,
+                        0
+                    )
+                }
+
+            /*
+             * ==========================================
+             * APAKAH SUDAH MASUK WINDOW REMINDER?
+             * ==========================================
+             *
+             * Contoh:
+             *
+             * today = 15
+             * reminderDays = 3
+             *
+             * reminderStart = 18
+             *
+             * deadline:
+             *
+             * 17 → belum tampil
+             * 18 → tampil
+             * 19 → tampil
+             * 20 → tampil
+             * 10 → tampil karena sudah lewat deadline
+             */
+
+            val shouldShow =
+                deadlineDay.timeInMillis <=
+                        reminderStart.timeInMillis
+
+            if (
+                shouldShow
+            ) {
 
                 val detail =
-                    buildTaskDetail(
+                    buildDeadlineTaskDetail(
                         task
                     )
 
@@ -213,14 +439,32 @@ class DailyReminderWorker(
 
                         detail
                     )
+
+            } else {
+
+                /*
+                 * Deadline masih terlalu jauh.
+                 *
+                 * Hapus notifikasi lama jika sebelumnya
+                 * user pernah menggunakan reminderDays
+                 * yang lebih besar.
+                 */
+
+                NotificationHelper
+                    .cancelTaskNotification(
+                        applicationContext,
+                        task.id.toString()
+                    )
             }
+        }
     }
 
+
     // =================================================
-    // DETAIL TUGAS
+    // DETAIL NOTIFIKASI DEADLINE
     // =================================================
 
-    private fun buildTaskDetail(
+    private fun buildDeadlineTaskDetail(
         task: TaskEntity
     ): String {
 
@@ -233,7 +477,10 @@ class DailyReminderWorker(
                 ?.let {
 
                     append(it)
-                    append("\n\n")
+
+                    append(
+                        "\n\n"
+                    )
                 }
 
             task.deadline?.let {
@@ -241,27 +488,60 @@ class DailyReminderWorker(
                 val formatter =
                     SimpleDateFormat(
                         "dd MMM yyyy • HH:mm",
-                        Locale("id")
+                        Locale(
+                            "id",
+                            "ID"
+                        )
                     )
 
                 append(
-                    "Deadline: ${formatter.format(it)}"
+                    "Deadline: "
+                )
+
+                append(
+                    formatter.format(
+                        it
+                    )
+                )
+
+                append(
+                    "\n"
+                )
+
+                append(
+                    "Status: "
+                )
+
+                append(
+                    getDeadlineText(
+                        Calendar
+                            .getInstance(),
+                        it
+                    )
                 )
             }
 
-            append("\n")
-
             append(
-                "Prioritas: "
+                "\n\nPrioritas: "
             )
 
             append(
-                when (task.priority) {
 
-                    1 -> "Tinggi"
-                    2 -> "Sedang"
-                    3 -> "Rendah"
-                    else -> "Normal"
+                when (
+                    task.priority
+                ) {
+
+                    1 ->
+                        "Tinggi"
+
+                    2 ->
+                        "Sedang"
+
+                    3 ->
+                        "Rendah"
+
+                    else ->
+                        "Normal"
                 }
             )
 
@@ -271,9 +551,10 @@ class DailyReminderWorker(
         }
     }
 
+
     // =================================================
-    // 3. JADWAL
-    // BIARKAN SAMA
+    // 3. JADWAL KULIAH
+    // LOGIKA TETAP
     // =================================================
 
     private suspend fun checkTodaySchedules(
@@ -281,7 +562,8 @@ class DailyReminderWorker(
     ) {
 
         val today =
-            Calendar.getInstance()
+            Calendar
+                .getInstance()
                 .get(
                     Calendar.DAY_OF_WEEK
                 )
@@ -314,6 +596,7 @@ class DailyReminderWorker(
 
                 val course =
                     courses.find {
+
                         it.id ==
                                 schedule.courseId
                     }
@@ -334,11 +617,13 @@ class DailyReminderWorker(
                         )
 
                         if (
-                            schedule.room.isNotBlank()
+                            schedule.room
+                                .isNotBlank()
                         ) {
 
                             append(
-                                "\nRuangan: ${schedule.room}"
+                                "\nRuangan: " +
+                                        schedule.room
                             )
                         }
 
@@ -361,68 +646,73 @@ class DailyReminderWorker(
             }
     }
 
+
     // =================================================
-    // DEADLINE X HARI
+    // DEADLINE TEXT
     // =================================================
 
     private fun getDeadlineText(
         now: Calendar,
-        deadline: java.util.Date
+        deadline: Date
     ): String {
 
         val today =
-            Calendar.getInstance().apply {
+            Calendar
+                .getInstance()
+                .apply {
 
-                time =
-                    now.time
+                    time =
+                        now.time
 
-                set(
-                    Calendar.HOUR_OF_DAY,
-                    0
-                )
+                    set(
+                        Calendar.HOUR_OF_DAY,
+                        0
+                    )
 
-                set(
-                    Calendar.MINUTE,
-                    0
-                )
+                    set(
+                        Calendar.MINUTE,
+                        0
+                    )
 
-                set(
-                    Calendar.SECOND,
-                    0
-                )
+                    set(
+                        Calendar.SECOND,
+                        0
+                    )
 
-                set(
-                    Calendar.MILLISECOND,
-                    0
-                )
-            }
+                    set(
+                        Calendar.MILLISECOND,
+                        0
+                    )
+                }
 
         val target =
-            Calendar.getInstance().apply {
+            Calendar
+                .getInstance()
+                .apply {
 
-                time =
-                    deadline
+                    time =
+                        deadline
 
-                set(
-                    Calendar.HOUR_OF_DAY,
-                    0
-                )
+                    set(
+                        Calendar.HOUR_OF_DAY,
+                        0
+                    )
 
-                set(
-                    Calendar.MINUTE,
-                    0
-                )
+                    set(
+                        Calendar.MINUTE,
+                        0
+                    )
 
-                set(
-                    Calendar.SECOND,
-                    0
-                )
+                    set(
+                        Calendar.SECOND,
+                        0
+                    )
 
-                set(
-                    Calendar.MILLISECOND,
-                    0
-                )
-            }
+                    set(
+                        Calendar.MILLISECOND,
+                        0
+                    )
+                }
 
         val difference =
             target.timeInMillis -
@@ -436,17 +726,25 @@ class DailyReminderWorker(
 
         return when {
 
-            days < 0L ->
+            days < 0L -> {
+
                 "terlambat ${-days} hari"
+            }
 
-            days == 0L ->
+            days == 0L -> {
+
                 "hari ini"
+            }
 
-            days == 1L ->
-                "1 hari"
+            days == 1L -> {
 
-            else ->
-                "$days hari"
+                "1 hari lagi"
+            }
+
+            else -> {
+
+                "$days hari lagi"
+            }
         }
     }
 }

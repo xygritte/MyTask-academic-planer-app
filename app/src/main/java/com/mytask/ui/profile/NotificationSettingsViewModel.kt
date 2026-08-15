@@ -1,7 +1,9 @@
 package com.mytask.ui.profile
 
-import androidx.lifecycle.ViewModel
+import android.app.Application
+import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.mytask.Notification.ReminderScheduler
 import com.mytask.data.repository.SettingsRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
@@ -12,19 +14,32 @@ import kotlinx.coroutines.launch
 @HiltViewModel
 class NotificationSettingsViewModel
 @Inject constructor(
+    application:
+    Application,
+
     private val settingsRepository:
     SettingsRepository
-) : ViewModel() {
 
-    /**
-     * Jumlah hari sebelum deadline
-     * untuk mulai menampilkan
-     * notifikasi permanen.
+) : AndroidViewModel(
+    application
+) {
+
+    private val appContext =
+        application.applicationContext
+
+
+    /*
+     * ==========================================
+     * JUMLAH HARI PENGINGAT
+     * ==========================================
      */
+
     val taskReminderDays =
+
         settingsRepository
             .taskReminderDays
             .stateIn(
+
                 scope =
                     viewModelScope,
 
@@ -38,13 +53,19 @@ class NotificationSettingsViewModel
                     1
             )
 
-    /**
-     * Status notifikasi "Tugas Aktif".
+
+    /*
+     * ==========================================
+     * TUGAS AKTIF
+     * ==========================================
      */
+
     val activeTaskNotification =
+
         settingsRepository
             .activeTaskNotification
             .stateIn(
+
                 scope =
                     viewModelScope,
 
@@ -58,9 +79,13 @@ class NotificationSettingsViewModel
                     true
             )
 
-    /**
-     * Mengubah jumlah hari pengingat.
+
+    /*
+     * ==========================================
+     * SET H-X
+     * ==========================================
      */
+
     fun setTaskReminderDays(
         days: Int
     ) {
@@ -71,13 +96,26 @@ class NotificationSettingsViewModel
                 .setTaskReminderDays(
                     days
                 )
+
+            /*
+             * Langsung sinkronkan notifikasi.
+             *
+             * Tidak perlu menunggu tengah malam.
+             */
+            ReminderScheduler
+                .syncToday(
+                    appContext
+                )
         }
     }
 
-    /**
-     * Mengaktifkan / menonaktifkan
-     * notifikasi tugas aktif.
+
+    /*
+     * ==========================================
+     * SET TUGAS AKTIF
+     * ==========================================
      */
+
     fun setActiveTaskNotification(
         enabled: Boolean
     ) {
@@ -87,6 +125,18 @@ class NotificationSettingsViewModel
             settingsRepository
                 .setActiveTaskNotification(
                     enabled
+                )
+
+            /*
+             * Kalau OFF, worker akan langsung
+             * membatalkan notifikasi Tugas Aktif.
+             *
+             * Kalau ON, worker akan langsung
+             * membuatnya kembali jika ada tugas.
+             */
+            ReminderScheduler
+                .syncToday(
+                    appContext
                 )
         }
     }
