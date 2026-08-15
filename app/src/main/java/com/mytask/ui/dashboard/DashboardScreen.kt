@@ -95,10 +95,10 @@ fun DashboardScreen(
                             painter = painterResource(R.mipmap.mytask_background),
                             contentDescription = "MyTask",
                             modifier = Modifier
-                                .size(42.dp)
-                                .clip(RoundedCornerShape(12.dp))
+                                .size(40.dp)
+                                .clip(RoundedCornerShape(11.dp))
                         )
-                        Spacer(Modifier.width(12.dp))
+                        Spacer(Modifier.width(10.dp))
                         Column {
                             Text(
                                 text = "MyTask",
