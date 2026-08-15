@@ -25,6 +25,7 @@ import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -36,6 +37,8 @@ import androidx.compose.ui.zIndex
 import androidx.core.content.ContextCompat
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
+import com.mytask.data.repository.TemplateDataImporter
+import com.mytask.data.repository.TemplatePreferenceRepository
 import com.mytask.data.repository.UserProfile
 import com.mytask.data.repository.UserProfileRepository
 import com.mytask.navigation.NavGraph
@@ -48,6 +51,7 @@ import com.mytask.ui.login.LoginScreen
 import com.mytask.ui.profile.ProfileScreen
 import com.mytask.ui.schedule.ScheduleScreen
 import com.mytask.ui.task.TaskListScreen
+import com.mytask.ui.template.AcademicTemplateDialog
 import com.mytask.ui.theme.MyTaskTheme
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.delay
@@ -102,22 +106,44 @@ private fun MyTaskApp() {
 
     val context = LocalContext.current.applicationContext
 
-    val repository = remember(context) {
+    val profileRepository = remember(context) {
         UserProfileRepository(context)
+    }
+
+    val templatePreferenceRepository = remember(context) {
+        TemplatePreferenceRepository(context)
+    }
+
+    val templateDataImporter = remember(context) {
+        TemplateDataImporter(context)
     }
 
     val profileState = produceState<Pair<Boolean, UserProfile?>>(
         initialValue = false to null,
-        key1 = repository
+        key1 = profileRepository
     ) {
-        repository.profile.collectLatest { profile ->
+        profileRepository.profile.collectLatest { profile ->
             value = true to profile
         }
     }
 
+    val templatePromptShown by
+        templatePreferenceRepository.promptShown
+            .collectAsState(initial = false)
+
     var minimumLoading by remember {
         mutableStateOf(true)
     }
+
+    var isApplyingTemplate by remember {
+        mutableStateOf(false)
+    }
+
+    var templateError by remember {
+        mutableStateOf<String?>(null)
+    }
+
+    val scope = rememberCoroutineScope()
 
     LaunchedEffect(Unit) {
         delay(800)
@@ -133,14 +159,56 @@ private fun MyTaskApp() {
     }
 
     if (profile == null) {
-        LoginScreen(repository = repository)
+        LoginScreen(repository = profileRepository)
         return
     }
 
-    MyTaskMainContent(
-        profile = profile,
-        repository = repository
-    )
+    Box(
+        modifier = Modifier.fillMaxSize()
+    ) {
+
+        MyTaskMainContent(
+            profile = profile,
+            repository = profileRepository
+        )
+
+        if (!templatePromptShown) {
+            AcademicTemplateDialog(
+                isApplying = isApplyingTemplate,
+                errorMessage = templateError,
+                onSkip = {
+                    if (!isApplyingTemplate) {
+                        scope.launch {
+                            templatePreferenceRepository
+                                .markPromptShown()
+                        }
+                    }
+                },
+                onApply = {
+                    if (!isApplyingTemplate) {
+                        scope.launch {
+                            isApplyingTemplate = true
+                            templateError = null
+
+                            runCatching {
+                                templateDataImporter
+                                    .importTemplate()
+                            }.onSuccess {
+                                templatePreferenceRepository
+                                    .markPromptShown()
+                            }.onFailure { error ->
+                                templateError =
+                                    error.message
+                                        ?: "Template gagal diterapkan."
+                            }
+
+                            isApplyingTemplate = false
+                        }
+                    }
+                }
+            )
+        }
+    }
 }
 
 @Composable
