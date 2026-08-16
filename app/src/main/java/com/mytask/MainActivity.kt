@@ -112,12 +112,13 @@ private fun MyTaskApp(
     val templatePreferenceRepository = remember(context) { TemplatePreferenceRepository(context) }
     val firebaseUser by authRepository.authState.collectAsState(initial = authRepository.currentUser)
     val localProfile by userProfileRepository.profile.collectAsState(initial = null)
-    val restorePending by userProfileRepository.restorePending.collectAsState(initial = false)
+
     val currentFirebaseUser = firebaseUser
     val currentLocalProfile = localProfile
 
     var sessionProfile by remember { mutableStateOf<UserProfile?>(null) }
     var sessionUid by remember { mutableStateOf<String?>(null) }
+    var restorePendingState by remember { mutableStateOf(false) }
     var accountLoading by remember { mutableStateOf(false) }
     var syncReady by remember { mutableStateOf(false) }
     var minimumLoading by remember { mutableStateOf(true) }
@@ -149,10 +150,14 @@ private fun MyTaskApp(
         }
     }
 
-    LaunchedEffect(currentFirebaseUser?.uid, restorePending) {
+    // One restore attempt per authenticated UID. Do not key this effect by restorePending,
+    // because changing restorePending from true -> false must not start a second restore.
+    LaunchedEffect(currentFirebaseUser?.uid) {
         val user = currentFirebaseUser
+
         if (user == null) {
             accountLoading = false
+            restorePendingState = false
             if (sessionUid == "guest") syncReady = true
             return@LaunchedEffect
         }
@@ -161,6 +166,7 @@ private fun MyTaskApp(
         syncReady = false
         onlineSaveMessage = null
         shouldShowTemplatePrompt = false
+        templateError = null
 
         val cachedUid = runCatching { userProfileRepository.uid.first() }.getOrNull()
         val immediateProfile = currentLocalProfile?.takeIf { cachedUid == user.uid }
@@ -172,34 +178,38 @@ private fun MyTaskApp(
         sessionProfile = immediateProfile
         sessionUid = user.uid
 
-        if (restorePending) {
-            scope.launch {
-                accountLoading = true
-                templateError = null
-                val cloudDataExists = runCatching {
-                    cloudDataSyncRepository.syncOnLogin(user.uid)
-                }.onSuccess {
-                    userProfileRepository.clearCloudRestorePending()
-                }.onFailure { error ->
-                    templateError = error.message ?: "Data online belum dapat dimuat."
-                }.getOrDefault(false)
+        // Read the persisted flag once for this login/session. On a normal app reopen it
+        // is false, so Room is used directly. After a fresh login it is true, so cloud
+        // restore runs exactly once.
+        val shouldRestoreFromCloud = runCatching {
+            userProfileRepository.restorePending.first()
+        }.getOrDefault(false)
+        restorePendingState = shouldRestoreFromCloud
 
-                if (!cloudDataExists) {
-                    val promptShown = runCatching {
-                        templatePreferenceRepository.promptShown(user.uid).first()
-                    }.getOrDefault(false)
-                    shouldShowTemplatePrompt = !promptShown
-                } else {
-                    shouldShowTemplatePrompt = false
-                }
-                syncReady = true
-                accountLoading = false
+        if (shouldRestoreFromCloud) {
+            val cloudDataExists = runCatching {
+                cloudDataSyncRepository.syncOnLogin(user.uid)
+            }.onSuccess {
+                userProfileRepository.clearCloudRestorePending()
+                restorePendingState = false
+            }.onFailure { error ->
+                templateError = error.message ?: "Data online belum dapat dimuat."
+            }.getOrDefault(false)
+
+            if (!cloudDataExists) {
+                val promptShown = runCatching {
+                    templatePreferenceRepository.promptShown(user.uid).first()
+                }.getOrDefault(false)
+                shouldShowTemplatePrompt = !promptShown
+            } else {
+                shouldShowTemplatePrompt = false
             }
         } else {
-            syncReady = true
-            accountLoading = false
             shouldShowTemplatePrompt = false
         }
+
+        syncReady = true
+        accountLoading = false
     }
 
     if (minimumLoading) {
@@ -236,6 +246,7 @@ private fun MyTaskApp(
                 onLoggedOut = {
                     sessionProfile = null
                     sessionUid = null
+                    restorePendingState = false
                     syncReady = false
                     accountLoading = false
                     onlineSaveMessage = null
@@ -277,7 +288,10 @@ private fun MyTaskApp(
     }
 
     if (currentFirebaseUser != null) {
-        LoadingScreen(if (restorePending) "Menyiapkan akun dan memulihkan data..." else "Menyiapkan akun...")
+        LoadingScreen(
+            if (restorePendingState) "Menyiapkan akun dan memulihkan data..."
+            else "Menyiapkan akun..."
+        )
         return
     }
 
@@ -292,6 +306,7 @@ private fun MyTaskApp(
             onLoggedOut = {
                 sessionProfile = null
                 sessionUid = null
+                restorePendingState = false
                 syncReady = false
                 shouldShowTemplatePrompt = false
             }
