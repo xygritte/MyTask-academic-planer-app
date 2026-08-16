@@ -43,19 +43,16 @@ class CloudDataSyncRepository @Inject constructor(
             database.taskDao().getAllTasks(),
             database.scheduleDao().getAllSchedules()
         ) { courses, tasks, schedules ->
-            buildJson(
-                courses = courses,
-                tasks = tasks,
-                schedules = schedules
+            AuthDebugLog.d(
+                "DB_STATE courses=${courses.size} tasks=${tasks.size} schedules=${schedules.size}"
             )
+            buildJson(courses, tasks, schedules)
         }
 
     suspend fun syncOnLogin(uid: String): Boolean {
         require(uid.isNotBlank())
 
-        AuthDebugLog.d(
-            "CLOUD_RESTORE start: uid=${AuthDebugLog.uid(uid)}"
-        )
+        AuthDebugLog.d("CLOUD_RESTORE start: uid=${AuthDebugLog.uid(uid)}")
 
         clearLocalAcademicData()
         NotificationHelper.cancelAllAppNotifications(context)
@@ -63,20 +60,11 @@ class CloudDataSyncRepository @Inject constructor(
         AuthDebugLog.d("CLOUD_RESTORE local workspace cleared")
 
         return try {
-            val snapshot =
-                document(uid)
-                    .get()
-                    .await()
-
-            val cloudJson =
-                snapshot
-                    .getString("dataJson")
-                    ?.takeIf { it.isNotBlank() }
+            val snapshot = document(uid).get().await()
+            val cloudJson = snapshot.getString("dataJson")?.takeIf { it.isNotBlank() }
 
             if (cloudJson == null) {
-                AuthDebugLog.d(
-                    "CLOUD_RESTORE no cloud data: uid=${AuthDebugLog.uid(uid)}"
-                )
+                AuthDebugLog.d("CLOUD_RESTORE no cloud data: uid=${AuthDebugLog.uid(uid)}")
                 ReminderScheduler.initialize(context)
                 false
             } else {
@@ -100,10 +88,7 @@ class CloudDataSyncRepository @Inject constructor(
 
     suspend fun uploadCurrentData(uid: String) {
         require(uid.isNotBlank())
-        AuthDebugLog.d(
-            "CLOUD_UPLOAD start: uid=${AuthDebugLog.uid(uid)}"
-        )
-
+        AuthDebugLog.d("CLOUD_UPLOAD start: uid=${AuthDebugLog.uid(uid)}")
         val json = databaseJson.first()
         uploadJson(uid, json)
     }
@@ -144,62 +129,33 @@ class CloudDataSyncRepository @Inject constructor(
 
     suspend fun clearLocalSessionData() {
         clearLocalAcademicData()
-
-        NotificationHelper
-            .cancelAllAppNotifications(context)
-
-        ReminderScheduler
-            .cancel(context)
+        NotificationHelper.cancelAllAppNotifications(context)
+        ReminderScheduler.cancel(context)
 
         context.filesDir
             .listFiles()
             ?.filter {
-                it.name.startsWith("mytask_data_") &&
-                    it.name.endsWith(".json")
+                it.name.startsWith("mytask_data_") && it.name.endsWith(".json")
             }
-            ?.forEach { file ->
-                runCatching {
-                    file.delete()
-                }
-            }
+            ?.forEach { file -> runCatching { file.delete() } }
 
         AuthDebugLog.d("LOCAL_SESSION clear completed")
     }
 
     private suspend fun replaceLocalDatabase(json: String) {
         val root = JSONObject(json)
-
-        val courses =
-            parseCourses(
-                root.optJSONArray("courses")
-            )
-
-        val tasks =
-            parseTasks(
-                root.optJSONArray("tasks")
-            )
-
-        val schedules =
-            parseSchedules(
-                root.optJSONArray("schedules")
-            )
+        val courses = parseCourses(root.optJSONArray("courses"))
+        val tasks = parseTasks(root.optJSONArray("tasks"))
+        val schedules = parseSchedules(root.optJSONArray("schedules"))
 
         database.withTransaction {
             database.scheduleDao().deleteAll()
             database.taskDao().deleteAll()
             database.courseDao().deleteAll()
 
-            if (courses.isNotEmpty()) {
-                database.courseDao().insertAll(courses)
-            }
-
-            if (tasks.isNotEmpty()) {
-                database.taskDao().insertAll(tasks)
-            }
-
-            if (schedules.isNotEmpty()) {
-                database.scheduleDao().insertAll(schedules)
-            }
+            if (courses.isNotEmpty()) database.courseDao().insertAll(courses)
+            if (tasks.isNotEmpty()) database.taskDao().insertAll(tasks)
+            if (schedules.isNotEmpty()) database.scheduleDao().insertAll(schedules)
         }
 
         AuthDebugLog.d(
@@ -217,74 +173,49 @@ class CloudDataSyncRepository @Inject constructor(
             put("version", 1)
             put("createdAt", System.currentTimeMillis())
 
-            put(
-                "courses",
-                JSONArray().apply {
-                    courses.forEach { course ->
-                        put(
-                            JSONObject().apply {
-                                put("id", course.id)
-                                put("name", course.name)
-                                put("code", course.code)
-                                put("lecturer", course.lecturer)
-                                put("room", course.room)
-                            }
-                        )
-                    }
+            put("courses", JSONArray().apply {
+                courses.forEach { course ->
+                    put(JSONObject().apply {
+                        put("id", course.id)
+                        put("name", course.name)
+                        put("code", course.code)
+                        put("lecturer", course.lecturer)
+                        put("room", course.room)
+                    })
                 }
-            )
+            })
 
-            put(
-                "tasks",
-                JSONArray().apply {
-                    tasks.forEach { task ->
-                        put(
-                            JSONObject().apply {
-                                put("id", task.id)
-                                put(
-                                    "courseId",
-                                    task.courseId ?: JSONObject.NULL
-                                )
-                                put("title", task.title)
-                                put("description", task.description)
-                                put(
-                                    "deadline",
-                                    task.deadline?.time ?: JSONObject.NULL
-                                )
-                                put("priority", task.priority)
-                                put("isCompleted", task.isCompleted)
-                            }
-                        )
-                    }
+            put("tasks", JSONArray().apply {
+                tasks.forEach { task ->
+                    put(JSONObject().apply {
+                        put("id", task.id)
+                        put("courseId", task.courseId ?: JSONObject.NULL)
+                        put("title", task.title)
+                        put("description", task.description)
+                        put("deadline", task.deadline?.time ?: JSONObject.NULL)
+                        put("priority", task.priority)
+                        put("isCompleted", task.isCompleted)
+                    })
                 }
-            )
+            })
 
-            put(
-                "schedules",
-                JSONArray().apply {
-                    schedules.forEach { schedule ->
-                        put(
-                            JSONObject().apply {
-                                put("id", schedule.id)
-                                put(
-                                    "courseId",
-                                    schedule.courseId ?: JSONObject.NULL
-                                )
-                                put("dayOfWeek", schedule.dayOfWeek)
-                                put("startTime", schedule.startTime)
-                                put("endTime", schedule.endTime)
-                                put("room", schedule.room)
-                            }
-                        )
-                    }
+            put("schedules", JSONArray().apply {
+                schedules.forEach { schedule ->
+                    put(JSONObject().apply {
+                        put("id", schedule.id)
+                        put("courseId", schedule.courseId ?: JSONObject.NULL)
+                        put("dayOfWeek", schedule.dayOfWeek)
+                        put("startTime", schedule.startTime)
+                        put("endTime", schedule.endTime)
+                        put("room", schedule.room)
+                    })
                 }
-            )
+            })
         }.toString()
     }
 
     private fun parseCourses(array: JSONArray?): List<CourseEntity> {
         if (array == null) return emptyList()
-
         return buildList {
             for (index in 0 until array.length()) {
                 val item = array.getJSONObject(index)
@@ -303,19 +234,11 @@ class CloudDataSyncRepository @Inject constructor(
 
     private fun parseTasks(array: JSONArray?): List<TaskEntity> {
         if (array == null) return emptyList()
-
         return buildList {
             for (index in 0 until array.length()) {
                 val item = array.getJSONObject(index)
-
-                val courseId =
-                    if (item.isNull("courseId")) null
-                    else item.optLong("courseId")
-
-                val deadline =
-                    if (item.isNull("deadline")) null
-                    else Date(item.optLong("deadline"))
-
+                val courseId = if (item.isNull("courseId")) null else item.optLong("courseId")
+                val deadline = if (item.isNull("deadline")) null else Date(item.optLong("deadline"))
                 add(
                     TaskEntity(
                         id = item.optLong("id", 0L),
@@ -324,10 +247,7 @@ class CloudDataSyncRepository @Inject constructor(
                         description = item.optString("description"),
                         deadline = deadline,
                         priority = item.optInt("priority", 1),
-                        isCompleted = item.optBoolean(
-                            "isCompleted",
-                            false
-                        )
+                        isCompleted = item.optBoolean("isCompleted", false)
                     )
                 )
             }
@@ -336,15 +256,10 @@ class CloudDataSyncRepository @Inject constructor(
 
     private fun parseSchedules(array: JSONArray?): List<ScheduleEntity> {
         if (array == null) return emptyList()
-
         return buildList {
             for (index in 0 until array.length()) {
                 val item = array.getJSONObject(index)
-
-                val courseId =
-                    if (item.isNull("courseId")) null
-                    else item.optLong("courseId")
-
+                val courseId = if (item.isNull("courseId")) null else item.optLong("courseId")
                 add(
                     ScheduleEntity(
                         id = item.optLong("id", 0L),
@@ -360,25 +275,11 @@ class CloudDataSyncRepository @Inject constructor(
     }
 
     private fun localFile(uid: String): File {
-        val safeUid =
-            uid.replace(
-                Regex("[^A-Za-z0-9._-]"),
-                "_"
-            )
-
-        return File(
-            context.filesDir,
-            "mytask_data_$safeUid.json"
-        )
+        val safeUid = uid.replace(Regex("[^A-Za-z0-9._-]"), "_")
+        return File(context.filesDir, "mytask_data_$safeUid.json")
     }
 
-    private fun saveLocalJson(
-        uid: String,
-        json: String
-    ) {
-        localFile(uid).writeText(
-            json,
-            Charsets.UTF_8
-        )
+    private fun saveLocalJson(uid: String, json: String) {
+        localFile(uid).writeText(json, Charsets.UTF_8)
     }
 }
