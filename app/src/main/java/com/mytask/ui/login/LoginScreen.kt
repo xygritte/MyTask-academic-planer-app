@@ -183,7 +183,9 @@ fun LoginScreen(
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
                 Image(
-                    painter = painterResource(R.mipmap.ic_launcher),
+                    // painterResource cannot render the adaptive-icon XML in
+                    // mipmap-anydpi-v26. Use the existing raster WEBP resource.
+                    painter = painterResource(R.mipmap.mytask_background),
                     contentDescription = "MyTask",
                     modifier = Modifier
                         .size(78.dp)
@@ -551,15 +553,15 @@ private fun GuestProfileDialog(
                     value = name,
                     onValueChange = onNameChange,
                     label = "Nama Mahasiswa",
-                    placeholder = "Nama lengkap",
+                    placeholder = "Nama lengkap...",
                     icon = Icons.Default.PersonOutline
                 )
-                Spacer(Modifier.height(10.dp))
+                Spacer(Modifier.height(12.dp))
                 AuthTextField(
                     value = program,
                     onValueChange = onProgramChange,
                     label = "Program Studi",
-                    placeholder = "Teknik Informatika",
+                    placeholder = "Contoh: Teknik Informatika",
                     icon = Icons.Default.School
                 )
             }
@@ -567,13 +569,13 @@ private fun GuestProfileDialog(
         confirmButton = {
             Button(
                 onClick = onConfirm,
-                enabled = !isLoading
+                enabled = !isLoading && name.isNotBlank() && program.isNotBlank()
             ) {
-                Text(if (isLoading) "Menyimpan..." else "Masuk")
+                Text(if (isLoading) "Memproses..." else "Masuk")
             }
         },
         dismissButton = {
-            androidx.compose.material3.TextButton(
+            OutlinedButton(
                 onClick = onDismiss,
                 enabled = !isLoading
             ) {
@@ -584,36 +586,23 @@ private fun GuestProfileDialog(
 }
 
 @Composable
-private fun authFieldColors() =
-    OutlinedTextFieldDefaults.colors(
-        focusedTextColor = MaterialTheme.colorScheme.onSurface,
-        unfocusedTextColor = MaterialTheme.colorScheme.onSurface,
-        focusedBorderColor = MaterialTheme.colorScheme.primary,
-        unfocusedBorderColor = MaterialTheme.colorScheme.outline,
-        focusedLabelColor = MaterialTheme.colorScheme.primary,
-        unfocusedLabelColor = MaterialTheme.colorScheme.onSurfaceVariant,
-        focusedLeadingIconColor = MaterialTheme.colorScheme.primary,
-        unfocusedLeadingIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
-        focusedPlaceholderColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.65f),
-        unfocusedPlaceholderColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.65f),
-        cursorColor = MaterialTheme.colorScheme.primary
-    )
+private fun authFieldColors() = OutlinedTextFieldDefaults.colors()
 
 private fun friendlyFirebaseError(message: String?): String {
+    val normalized = message?.lowercase().orEmpty()
     return when {
-        message.isNullOrBlank() -> "Terjadi kesalahan. Coba lagi."
-        message.contains("badly formatted", ignoreCase = true) -> "Format email tidak valid."
-        message.contains("invalid-credential", ignoreCase = true) ||
-            message.contains("password is invalid", ignoreCase = true) ->
+        "password is invalid" in normalized || "wrong-password" in normalized ->
             "Email atau password salah."
-        message.contains("user-not-found", ignoreCase = true) ->
+        "no user record" in normalized || "user-not-found" in normalized ->
             "Akun dengan email tersebut belum terdaftar."
-        message.contains("email-already-in-use", ignoreCase = true) ->
-            "Email tersebut sudah digunakan."
-        message.contains("network", ignoreCase = true) ->
-            "Tidak dapat terhubung ke internet."
-        message.contains("credential", ignoreCase = true) ->
-            "Login Google tidak dapat diselesaikan. Coba pilih akun lagi."
-        else -> "Tidak dapat memproses permintaan. Coba lagi."
+        "email address is already in use" in normalized || "email-already-in-use" in normalized ->
+            "Email sudah didaftarkan. Silakan masuk menggunakan akun tersebut."
+        "badly formatted" in normalized || "invalid-email" in normalized ->
+            "Format email tidak valid."
+        "network" in normalized || "unavailable" in normalized ->
+            "Tidak ada koneksi internet."
+        "too many requests" in normalized ->
+            "Terlalu banyak percobaan. Coba lagi beberapa saat."
+        else -> message ?: "Terjadi kesalahan. Silakan coba lagi."
     }
 }
