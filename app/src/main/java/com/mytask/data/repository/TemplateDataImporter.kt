@@ -6,6 +6,7 @@ import com.mytask.data.local.MyTaskDatabase
 import com.mytask.data.local.entity.CourseEntity
 import com.mytask.data.local.entity.ScheduleEntity
 import com.mytask.data.local.entity.TaskEntity
+import com.mytask.data.local.toMinuteOfDayOrNull
 import com.mytask.debug.AppDebugLog
 import dagger.hilt.android.qualifiers.ApplicationContext
 import org.json.JSONObject
@@ -25,8 +26,7 @@ class TemplateDataImporter @Inject constructor(
 
         database.withTransaction {
             val root = JSONObject(
-                context.assets
-                    .open("template_academic.json")
+                context.assets.open("template_academic.json")
                     .bufferedReader()
                     .use { it.readText() }
             )
@@ -85,22 +85,24 @@ class TemplateDataImporter @Inject constructor(
                 val courseTemplateId = item.optLong("courseId", -1L)
                 val courseName = templateCourseNames[courseTemplateId]
                 val actualCourseId = courseName?.let { courseIdByName[it] }
+                val startMinutes = item.optInt("startMinutes", -1).takeIf { it >= 0 }
+                    ?: item.optString("startTime").toMinuteOfDayOrNull()
+                    ?: 0
+                val endMinutes = item.optInt("endMinutes", -1).takeIf { it >= 0 }
+                    ?: item.optString("endTime").toMinuteOfDayOrNull()
+                    ?: startMinutes
 
                 schedules += ScheduleEntity(
                     courseId = actualCourseId,
                     dayOfWeek = item.getInt("dayOfWeek"),
-                    startTime = item.getString("startTime"),
-                    endTime = item.getString("endTime"),
+                    startMinutes = startMinutes.coerceIn(0, 1439),
+                    endMinutes = endMinutes.coerceIn(0, 1439),
                     room = item.optString("room")
                 )
             }
 
             if (schedules.isNotEmpty()) database.scheduleDao().insertAll(schedules)
-
-            AppDebugLog.d(
-                "TEMPLATE",
-                "import completed courses=${courseArray.length()} tasks=${taskArray.length()} schedules=${scheduleArray.length()}"
-            )
+            AppDebugLog.d("TEMPLATE", "import completed courses=${courseArray.length()} tasks=${taskArray.length()} schedules=${scheduleArray.length()}")
         }
     }
 
@@ -112,7 +114,6 @@ class TemplateDataImporter @Inject constructor(
             set(Calendar.MILLISECOND, 999)
             add(Calendar.DAY_OF_YEAR, offsetDays.coerceAtLeast(0))
         }
-
         return calendar.time
     }
 }
