@@ -2,10 +2,14 @@
 
 package com.mytask.ui.profile
 
+import android.net.Uri
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -14,10 +18,13 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowForwardIos
+import androidx.compose.material.icons.filled.CameraAlt
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Cloud
 import androidx.compose.material.icons.filled.CloudUpload
@@ -55,6 +62,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import coil.compose.AsyncImage
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.UserProfileChangeRequest
 import com.google.firebase.firestore.FirebaseFirestore
@@ -86,13 +94,33 @@ fun ProfileScreen(
         UserProfileRepository(context)
     }
     val storedProfile by userProfileRepository.profile.collectAsState(initial = profile)
+    val storedPhotoUri by userProfileRepository.profilePhotoUri.collectAsState(initial = null)
     val displayedProfile = storedProfile ?: profile
+    val firebasePhotoUri = FirebaseAuth.getInstance().currentUser?.photoUrl?.toString()
+    val photoModel = storedPhotoUri ?: firebasePhotoUri
 
     var showEditDialog by remember { mutableStateOf(false) }
     var isUpdatingProfile by remember { mutableStateOf(false) }
     var editError by remember { mutableStateOf<String?>(null) }
     var editSuccess by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
+
+    val photoPicker = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.GetContent()
+    ) { uri: Uri? ->
+        if (uri != null) {
+            scope.launch {
+                runCatching {
+                    context.contentResolver.takePersistableUriPermission(
+                        uri,
+                        android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION
+                    )
+                }
+                userProfileRepository.saveProfilePhotoUri(uri.toString())
+                AuthDebugLog.d("PROFILE_PHOTO selected")
+            }
+        }
+    }
 
     Scaffold(
         topBar = {
@@ -110,6 +138,7 @@ fun ProfileScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(paddingValues)
+                .verticalScroll(rememberScrollState())
                 .padding(horizontal = 16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
@@ -126,77 +155,116 @@ fun ProfileScreen(
                     MaterialTheme.colorScheme.outline.copy(alpha = 0.45f)
                 )
             ) {
-                Row(
+                Column(
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(20.dp),
-                    verticalAlignment = Alignment.CenterVertically
+                    horizontalAlignment = Alignment.CenterHorizontally
                 ) {
-                    Surface(
-                        modifier = Modifier.size(72.dp),
-                        shape = CircleShape,
-                        color = MaterialTheme.colorScheme.secondaryContainer
+                    Box(
+                        modifier = Modifier.size(104.dp)
                     ) {
-                        Image(
-                            painter = painterResource(
-                                id = R.mipmap.mytask_background
-                            ),
-                            contentDescription = "Avatar",
+                        Surface(
                             modifier = Modifier
                                 .fillMaxSize()
                                 .clip(CircleShape)
-                        )
-                    }
-
-                    Spacer(Modifier.size(16.dp))
-
-                    Column(
-                        modifier = Modifier.weight(1f)
-                    ) {
-                        Text(
-                            text = displayedProfile.name,
-                            style = MaterialTheme.typography.headlineSmall,
-                            fontWeight = FontWeight.Bold
-                        )
-
-                        Spacer(Modifier.height(2.dp))
-
-                        Text(
-                            text = displayedProfile.program,
-                            style = MaterialTheme.typography.bodyLarge,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-
-                        Spacer(Modifier.height(6.dp))
+                                .clickable { photoPicker.launch("image/*") },
+                            shape = CircleShape,
+                            color = MaterialTheme.colorScheme.secondaryContainer
+                        ) {
+                            if (photoModel.isNullOrBlank()) {
+                                Image(
+                                    painter = painterResource(
+                                        id = R.mipmap.mytask_background
+                                    ),
+                                    contentDescription = "Foto profil",
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .clip(CircleShape)
+                                )
+                            } else {
+                                AsyncImage(
+                                    model = photoModel,
+                                    contentDescription = "Foto profil",
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .clip(CircleShape)
+                                )
+                            }
+                        }
 
                         Surface(
-                            shape = RoundedCornerShape(8.dp),
-                            color = MaterialTheme.colorScheme.primaryContainer
+                            modifier = Modifier
+                                .align(Alignment.BottomEnd)
+                                .size(34.dp),
+                            shape = CircleShape,
+                            color = MaterialTheme.colorScheme.primary,
+                            shadowElevation = 4.dp
                         ) {
-                            Text(
-                                text = "Mahasiswa",
-                                style = MaterialTheme.typography.labelMedium,
-                                color = MaterialTheme.colorScheme.onPrimaryContainer,
-                                modifier = Modifier.padding(
-                                    horizontal = 8.dp,
-                                    vertical = 5.dp
+                            IconButton(
+                                onClick = { photoPicker.launch("image/*") },
+                                modifier = Modifier.fillMaxSize()
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.CameraAlt,
+                                    contentDescription = "Ubah foto profil",
+                                    tint = MaterialTheme.colorScheme.onPrimary,
+                                    modifier = Modifier.size(18.dp)
                                 )
-                            )
+                            }
                         }
                     }
 
-                    IconButton(
+                    Spacer(Modifier.height(14.dp))
+
+                    Text(
+                        text = displayedProfile.name,
+                        style = MaterialTheme.typography.headlineSmall,
+                        fontWeight = FontWeight.Bold
+                    )
+
+                    Spacer(Modifier.height(2.dp))
+
+                    Text(
+                        text = displayedProfile.program,
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+
+                    Spacer(Modifier.height(8.dp))
+
+                    Surface(
+                        shape = RoundedCornerShape(8.dp),
+                        color = MaterialTheme.colorScheme.primaryContainer
+                    ) {
+                        Text(
+                            text = "Mahasiswa",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onPrimaryContainer,
+                            modifier = Modifier.padding(
+                                horizontal = 8.dp,
+                                vertical = 5.dp
+                            )
+                        )
+                    }
+
+                    Spacer(Modifier.height(12.dp))
+
+                    OutlinedButton(
                         onClick = {
                             editError = null
                             editSuccess = null
                             showEditDialog = true
-                        }
+                        },
+                        enabled = !isUpdatingProfile
                     ) {
                         Icon(
                             imageVector = Icons.Default.Edit,
-                            contentDescription = "Edit profil",
-                            tint = MaterialTheme.colorScheme.primary
+                            contentDescription = null,
+                            modifier = Modifier.size(18.dp)
                         )
+                        Spacer(Modifier.size(8.dp))
+                        Text("Edit profil")
                     }
                 }
             }
@@ -288,6 +356,8 @@ fun ProfileScreen(
                 icon = Icons.Default.Person,
                 label = "MyTask Academic Planner\napp by Furqon Ramadhani"
             )
+
+            Spacer(Modifier.height(24.dp))
         }
     }
 
