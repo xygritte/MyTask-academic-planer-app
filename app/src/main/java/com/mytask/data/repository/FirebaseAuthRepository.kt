@@ -8,6 +8,7 @@ import com.google.firebase.firestore.SetOptions
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.tasks.await
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -44,154 +45,197 @@ class FirebaseAuthRepository @Inject constructor(
         program: String,
         email: String,
         password: String
-    ): Result<UserProfile> = runCatching {
+    ): Result<UserProfile> {
 
-        val authResult =
-            auth.createUserWithEmailAndPassword(
-                email.trim(),
-                password
+        return try {
+
+            val authResult =
+                auth.createUserWithEmailAndPassword(
+                    email.trim(),
+                    password
+                ).await()
+
+            val user =
+                authResult.user
+                    ?: error("Akun Firebase tidak berhasil dibuat.")
+
+            user.updateProfile(
+                UserProfileChangeRequest.Builder()
+                    .setDisplayName(name.trim())
+                    .build()
             ).await()
 
-        val user =
-            authResult.user
-                ?: error("Akun Firebase tidak berhasil dibuat.")
-
-        user.updateProfile(
-            UserProfileChangeRequest.Builder()
-                .setDisplayName(name.trim())
-                .build()
-        ).await()
-
-        val profile = UserProfile(
-            name = name.trim(),
-            program = program.trim()
-        )
-
-        firestore
-            .collection("users")
-            .document(user.uid)
-            .set(
-                mapOf(
-                    "uid" to user.uid,
-                    "name" to profile.name,
-                    "program" to profile.program,
-                    "email" to user.email,
-                    "createdAt" to System.currentTimeMillis()
-                ),
-                SetOptions.merge()
+            val profile = UserProfile(
+                name = name.trim(),
+                program = program.trim()
             )
-            .await()
 
-        userProfileRepository.saveProfile(
-            name = profile.name,
-            program = profile.program
-        )
+            firestore
+                .collection("users")
+                .document(user.uid)
+                .set(
+                    mapOf(
+                        "uid" to user.uid,
+                        "name" to profile.name,
+                        "program" to profile.program,
+                        "email" to user.email,
+                        "createdAt" to System.currentTimeMillis()
+                    ),
+                    SetOptions.merge()
+                )
+                .await()
 
-        profile
-    }.onFailure {
-        // Jika pembuatan profil cloud gagal setelah akun Firebase dibuat,
-        // jangan biarkan state registrasi setengah jadi.
-        runCatching {
-            auth.currentUser?.delete()?.await()
+            userProfileRepository.saveProfile(
+                uid = user.uid,
+                name = profile.name,
+                program = profile.program
+            )
+
+            Result.success(profile)
+
+        } catch (error: Throwable) {
+
+            runCatching {
+                auth.currentUser?.delete()?.await()
+            }
+
+            auth.signOut()
+            userProfileRepository.clearProfile()
+
+            Result.failure(error)
         }
-        auth.signOut()
-        userProfileRepository.clearProfile()
     }
 
     suspend fun login(
         email: String,
         password: String
-    ): Result<UserProfile> = runCatching {
+    ): Result<UserProfile> {
 
-        val authResult =
-            auth.signInWithEmailAndPassword(
-                email.trim(),
-                password
-            ).await()
+        return try {
 
-        val user =
-            authResult.user
-                ?: error("Akun tidak ditemukan.")
+            val authResult =
+                auth.signInWithEmailAndPassword(
+                    email.trim(),
+                    password
+                ).await()
 
-        val profileDocument =
-            firestore
-                .collection("users")
-                .document(user.uid)
-                .get()
-                .await()
+            val user =
+                authResult.user
+                    ?: error("Akun tidak ditemukan.")
 
-        val name =
-            profileDocument
-                .getString("name")
-                ?.trim()
-                ?.takeIf { it.isNotBlank() }
-                ?: user.displayName?.trim()?.takeIf { it.isNotBlank() }
-                ?: "Mahasiswa"
+            val profileDocument =
+                firestore
+                    .collection("users")
+                    .document(user.uid)
+                    .get()
+                    .await()
 
-        val program =
-            profileDocument
-                .getString("program")
-                ?.trim()
-                ?.takeIf { it.isNotBlank() }
-                ?: "Program Studi belum diatur"
+            val name =
+                profileDocument
+                    .getString("name")
+                    ?.trim()
+                    ?.takeIf { it.isNotBlank() }
+                    ?: user.displayName
+                        ?.trim()
+                        ?.takeIf { it.isNotBlank() }
+                    ?: error("Profil akun belum lengkap.")
 
-        userProfileRepository.saveProfile(
-            name = name,
-            program = program
-        )
+            val program =
+                profileDocument
+                    .getString("program")
+                    ?.trim()
+                    ?.takeIf { it.isNotBlank() }
+                    ?: error("Program studi pada profil belum diatur.")
 
-        UserProfile(
-            name = name,
-            program = program
-        )
-    }.onFailure {
-        auth.signOut()
-        userProfileRepository.clearProfile()
+            userProfileRepository.saveProfile(
+                uid = user.uid,
+                name = name,
+                program = program
+            )
+
+            Result.success(
+                UserProfile(
+                    name = name,
+                    program = program
+                )
+            )
+
+        } catch (error: Throwable) {
+
+            auth.signOut()
+            userProfileRepository.clearProfile()
+
+            Result.failure(error)
+        }
     }
 
-    suspend fun reloadProfile(): Result<UserProfile> = runCatching {
+    suspend fun reloadProfile(): Result<UserProfile> {
 
         val user =
             auth.currentUser
-                ?: error("Belum ada pengguna yang login.")
+                ?: return Result.failure(
+                    IllegalStateException(
+                        "Belum ada pengguna yang login."
+                    )
+                )
 
-        user.reload().await()
+        return try {
 
-        val refreshedUser =
-            auth.currentUser
-                ?: error("Sesi login tidak tersedia.")
+            user.reload().await()
 
-        val profileDocument =
-            firestore
-                .collection("users")
-                .document(refreshedUser.uid)
-                .get()
-                .await()
+            val refreshedUser =
+                auth.currentUser
+                    ?: error("Sesi login tidak tersedia.")
 
-        val name =
-            profileDocument
-                .getString("name")
-                ?.trim()
-                ?.takeIf { it.isNotBlank() }
-                ?: refreshedUser.displayName?.trim()?.takeIf { it.isNotBlank() }
-                ?: "Mahasiswa"
+            val profileDocument =
+                firestore
+                    .collection("users")
+                    .document(refreshedUser.uid)
+                    .get()
+                    .await()
 
-        val program =
-            profileDocument
-                .getString("program")
-                ?.trim()
-                ?.takeIf { it.isNotBlank() }
-                ?: "Program Studi belum diatur"
+            val name =
+                profileDocument
+                    .getString("name")
+                    ?.trim()
+                    ?.takeIf { it.isNotBlank() }
+                    ?: refreshedUser.displayName
+                        ?.trim()
+                        ?.takeIf { it.isNotBlank() }
+                    ?: error("Profil akun belum lengkap.")
 
-        userProfileRepository.saveProfile(
-            name = name,
-            program = program
-        )
+            val program =
+                profileDocument
+                    .getString("program")
+                    ?.trim()
+                    ?.takeIf { it.isNotBlank() }
+                    ?: error("Program studi pada profil belum diatur.")
 
-        UserProfile(
-            name = name,
-            program = program
-        )
+            val profile =
+                UserProfile(
+                    name = name,
+                    program = program
+                )
+
+            userProfileRepository.saveProfile(
+                uid = refreshedUser.uid,
+                name = profile.name,
+                program = profile.program
+            )
+
+            Result.success(profile)
+
+        } catch (error: Throwable) {
+
+            val cached =
+                userProfileRepository.profile.first()
+
+            if (cached != null) {
+                Result.success(cached)
+            } else {
+                Result.failure(error)
+            }
+        }
     }
 
     fun signOut() {
