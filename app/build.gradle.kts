@@ -5,6 +5,7 @@ plugins {
     id("org.jetbrains.kotlin.kapt")
     id("com.google.devtools.ksp")
     id("com.google.dagger.hilt.android")
+    id("com.google.gms.google-services")
 }
 
 android {
@@ -87,6 +88,23 @@ dependencies {
     // Coroutines
     implementation(
         "org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1"
+    )
+
+    implementation(
+        "org.jetbrains.kotlinx:kotlinx-coroutines-play-services:1.8.1"
+    )
+
+    // Firebase
+    implementation(
+        platform("com.google.firebase:firebase-bom:34.16.0")
+    )
+
+    implementation(
+        "com.google.firebase:firebase-auth"
+    )
+
+    implementation(
+        "com.google.firebase:firebase-firestore"
     )
 
     // Hilt
