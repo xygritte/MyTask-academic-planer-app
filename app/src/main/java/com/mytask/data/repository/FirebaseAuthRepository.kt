@@ -60,9 +60,6 @@ class FirebaseAuthRepository @Inject constructor(
             val user = authResult.user
                 ?: error("Akun Firebase tidak berhasil dibuat.")
 
-            // Registering a new account always starts from an empty local
-            // academic workspace. The previous account's Room data must not
-            // be inherited.
             cloudDataSyncRepository.clearLocalSessionData()
 
             val cleanName = name.trim()
@@ -88,6 +85,10 @@ class FirebaseAuthRepository @Inject constructor(
                 name = profile.name,
                 program = profile.program
             )
+
+            // The Room workspace is restored once after this explicit login.
+            // Reopening the app does not trigger another network restore.
+            userProfileRepository.markCloudRestorePending()
 
             Result.success(profile)
         } catch (error: Throwable) {
@@ -123,6 +124,8 @@ class FirebaseAuthRepository @Inject constructor(
                 name = profile.name,
                 program = profile.program
             )
+
+            userProfileRepository.markCloudRestorePending()
 
             Result.success(profile)
         } catch (error: Throwable) {
@@ -206,6 +209,8 @@ class FirebaseAuthRepository @Inject constructor(
                 program = profile.program
             )
 
+            userProfileRepository.markCloudRestorePending()
+
             Result.success(profile)
         } catch (error: Throwable) {
             auth.signOut()
@@ -219,8 +224,6 @@ class FirebaseAuthRepository @Inject constructor(
         program: String
     ): Result<UserProfile> {
         return runCatching {
-            // Guest is a separate local session. Never expose the previous
-            // Firebase account's academic data to the guest workspace.
             cloudDataSyncRepository.clearLocalSessionData()
 
             val profile = UserProfile(
@@ -238,6 +241,8 @@ class FirebaseAuthRepository @Inject constructor(
                 name = profile.name,
                 program = profile.program
             )
+
+            userProfileRepository.clearCloudRestorePending()
 
             profile
         }
