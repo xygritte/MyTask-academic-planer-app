@@ -171,28 +171,47 @@ private fun MyTaskApp(
     }
 
     LaunchedEffect(firebaseUser?.uid) {
-        accountLoading = firebaseUser != null
+        val user = firebaseUser
+
+        accountLoading = user != null
         syncReady = false
         accountProfile = null
 
-        val user = firebaseUser
-
         if (user != null) {
-            val profileResult = authRepository.reloadProfile()
-            val profile = profileResult.getOrNull()
+            // Jangan mengunci UI sambil menunggu Firestore.
+            val local = localProfile
+            val immediateProfile =
+                local?.takeIf {
+                    userProfileRepository.uid.first() == user.uid
+                } ?: UserProfile(
+                    name = user.displayName
+                        ?.trim()
+                        ?.takeIf { it.isNotBlank() }
+                        ?: "Mahasiswa",
+                    program = "Program Studi belum diatur"
+                )
 
-            if (profile != null) {
-                accountProfile = profile
+            accountProfile = immediateProfile
+            accountLoading = false
 
+            launch {
+                authRepository.reloadProfile()
+                    .onSuccess { refreshedProfile ->
+                        accountProfile = refreshedProfile
+                    }
+            }
+
+            launch {
                 runCatching {
                     cloudDataSyncRepository.syncOnLogin(user.uid)
                 }
-
                 syncReady = true
             }
+        } else {
+            accountLoading = false
+            syncReady = false
+            accountProfile = null
         }
-
-        accountLoading = false
     }
 
     LaunchedEffect(firebaseUser?.uid, syncReady) {
@@ -220,93 +239,102 @@ private fun MyTaskApp(
         localProfile
     }
 
-    val sessionIsReady =
-        (firebaseUser != null && accountProfile != null && !accountLoading) ||
-            (firebaseUser == null && localProfile != null)
+    val activeProfile = profile ?: firebaseUser?.let { user ->
+        UserProfile(
+            name = user.displayName
+                ?.trim()
+                ?.takeIf { it.isNotBlank() }
+                ?: "Mahasiswa",
+            program = "Program Studi belum diatur"
+        )
+    }
 
-    if (minimumLoading || !sessionIsReady) {
-        if (
-            firebaseUser == null &&
-            localProfile == null &&
-            !accountLoading
+    if (minimumLoading) {
+        LoadingScreen()
+        return
+    }
+
+    if (firebaseUser != null && activeProfile != null && !accountLoading) {
+        val templateUid = firebaseUser?.uid ?: "guest"
+
+        val promptFlow = remember(templateUid) {
+            templatePreferenceRepository.promptShown(templateUid)
+        }
+
+        val templatePromptShown by promptFlow.collectAsState(
+            initial = false
+        )
+
+        Box(
+            modifier = Modifier.fillMaxSize()
         ) {
-            LoginScreen(
+            MyTaskMainContent(
+                profile = activeProfile,
                 authRepository = authRepository
             )
-        } else {
-            LoadingScreen()
+
+            if (!templatePromptShown) {
+                AcademicTemplateDialog(
+                    isApplying = isApplyingTemplate,
+                    errorMessage = templateError,
+                    onSkip = {
+                        if (!isApplyingTemplate) {
+                            scope.launch {
+                                templatePreferenceRepository
+                                    .markPromptShown(templateUid)
+                            }
+                        }
+                    },
+                    onApply = {
+                        if (!isApplyingTemplate) {
+                            scope.launch {
+                                isApplyingTemplate = true
+                                templateError = null
+
+                                runCatching {
+                                    templateDataImporter.importTemplate()
+
+                                    val user = firebaseUser
+                                    if (user != null) {
+                                        cloudDataSyncRepository.uploadCurrentData(
+                                            user.uid
+                                        )
+                                    }
+                                }.onSuccess {
+                                    templatePreferenceRepository
+                                        .markPromptShown(templateUid)
+                                }.onFailure { error ->
+                                    templateError =
+                                        error.message
+                                            ?: "Template gagal diterapkan."
+                                }
+
+                                isApplyingTemplate = false
+                            }
+                        }
+                    }
+                )
+            }
         }
         return
     }
 
-    val activeProfile = profile ?: run {
+    if (firebaseUser == null && localProfile != null) {
+        MyTaskMainContent(
+            profile = localProfile,
+            authRepository = authRepository
+        )
+        return
+    }
+
+    if (firebaseUser == null && localProfile == null) {
         LoginScreen(
             authRepository = authRepository
         )
         return
     }
 
-    val templateUid = firebaseUser?.uid ?: "guest"
-
-    val promptFlow = remember(templateUid) {
-        templatePreferenceRepository.promptShown(templateUid)
-    }
-
-    val templatePromptShown by promptFlow.collectAsState(
-        initial = false
-    )
-
-    Box(
-        modifier = Modifier.fillMaxSize()
-    ) {
-        MyTaskMainContent(
-            profile = activeProfile,
-            authRepository = authRepository
-        )
-
-        if (!templatePromptShown) {
-            AcademicTemplateDialog(
-                isApplying = isApplyingTemplate,
-                errorMessage = templateError,
-                onSkip = {
-                    if (!isApplyingTemplate) {
-                        scope.launch {
-                            templatePreferenceRepository
-                                .markPromptShown(templateUid)
-                        }
-                    }
-                },
-                onApply = {
-                    if (!isApplyingTemplate) {
-                        scope.launch {
-                            isApplyingTemplate = true
-                            templateError = null
-
-                            runCatching {
-                                templateDataImporter.importTemplate()
-
-                                val user = firebaseUser
-                                if (user != null) {
-                                    cloudDataSyncRepository.uploadCurrentData(
-                                        user.uid
-                                    )
-                                }
-                            }.onSuccess {
-                                templatePreferenceRepository
-                                    .markPromptShown(templateUid)
-                            }.onFailure { error ->
-                                templateError =
-                                    error.message
-                                        ?: "Template gagal diterapkan."
-                            }
-
-                            isApplyingTemplate = false
-                        }
-                    }
-                }
-            )
-        }
-    }
+    LoadingScreen()
 }
 
 @Composable
