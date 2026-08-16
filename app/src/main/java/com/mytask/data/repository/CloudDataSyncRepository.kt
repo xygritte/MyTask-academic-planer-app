@@ -64,8 +64,6 @@ class CloudDataSyncRepository @Inject constructor(
             "CLOUD_RESTORE start: uid=${AuthDebugLog.uid(uid)} online=${isNetworkAvailable()}"
         )
 
-        // Never destroy the local workspace before the cloud restore has
-        // actually succeeded. This is important for offline-first behavior.
         if (!isNetworkAvailable()) {
             AuthDebugLog.d(
                 "CLOUD_RESTORE skipped: device offline, keeping local Room data"
@@ -75,6 +73,8 @@ class CloudDataSyncRepository @Inject constructor(
         }
 
         return try {
+            // IMPORTANT: do not clear Room before the cloud request succeeds.
+            // A failed restore must never erase a valid offline workspace.
             val snapshot = withTimeout(CLOUD_TIMEOUT_MS) {
                 document(uid)
                     .get()
@@ -86,10 +86,17 @@ class CloudDataSyncRepository @Inject constructor(
                 ?.takeIf { it.isNotBlank() }
 
             if (cloudJson == null) {
-                AuthDebugLog.d(
-                    "CLOUD_RESTORE no cloud data: uid=${AuthDebugLog.uid(uid)}"
-                )
+                // A freshly created account has no cloud backup. In that case
+                // start with a clean local workspace. Logout already clears the
+                // normal account-switch path, but this also protects against a
+                // stale local workspace after an interrupted login.
+                clearLocalAcademicData()
+                NotificationHelper.cancelAllAppNotifications(context)
+                ReminderScheduler.cancel(context)
                 ReminderScheduler.initialize(context)
+                AuthDebugLog.d(
+                    "CLOUD_RESTORE no cloud data; local workspace cleared: uid=${AuthDebugLog.uid(uid)}"
+                )
                 false
             } else {
                 replaceLocalDatabase(cloudJson)
