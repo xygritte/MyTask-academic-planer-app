@@ -1,11 +1,14 @@
 package com.mytask.ui.schedule
 
+import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.mytask.Notification.ReminderScheduler
 import com.mytask.data.local.entity.CourseEntity
 import com.mytask.data.local.entity.ScheduleEntity
 import com.mytask.data.repository.CourseRepository
 import com.mytask.data.repository.ScheduleRepository
+import dagger.hilt.android.qualifiers.ApplicationContext
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
 import kotlinx.coroutines.flow.SharingStarted
@@ -16,7 +19,8 @@ import kotlinx.coroutines.launch
 @HiltViewModel
 class ScheduleViewModel @Inject constructor(
     private val scheduleRepository: ScheduleRepository,
-    private val courseRepository: CourseRepository
+    private val courseRepository: CourseRepository,
+    @ApplicationContext private val context: Context
 ) : ViewModel() {
 
     val schedules: StateFlow<List<ScheduleEntity>> =
@@ -43,7 +47,7 @@ class ScheduleViewModel @Inject constructor(
         onSaved: () -> Unit
     ) {
         viewModelScope.launch {
-            scheduleRepository.addSchedule(
+            val id = scheduleRepository.addSchedule(
                 ScheduleEntity(
                     courseId = courseId,
                     dayOfWeek = dayOfWeek,
@@ -52,19 +56,25 @@ class ScheduleViewModel @Inject constructor(
                     room = room
                 )
             )
+            scheduleRepository.getScheduleById(id).stateIn(this).value?.let {
+                ReminderScheduler.scheduleScheduleReminder(context, it)
+            }
             onSaved()
         }
     }
 
     fun updateSchedule(schedule: ScheduleEntity, onSaved: () -> Unit) {
         viewModelScope.launch {
+            ReminderScheduler.cancelScheduleReminder(context, schedule.id)
             scheduleRepository.updateSchedule(schedule)
+            ReminderScheduler.scheduleScheduleReminder(context, schedule)
             onSaved()
         }
     }
 
     fun deleteSchedule(schedule: ScheduleEntity) {
         viewModelScope.launch {
+            ReminderScheduler.cancelScheduleReminder(context, schedule.id)
             scheduleRepository.deleteSchedule(schedule)
         }
     }
