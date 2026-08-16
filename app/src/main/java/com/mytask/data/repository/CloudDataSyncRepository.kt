@@ -1,6 +1,8 @@
 package com.mytask.data.repository
 
 import android.content.Context
+import android.net.ConnectivityManager
+import android.net.NetworkCapabilities
 import androidx.room.withTransaction
 import com.google.firebase.firestore.FirebaseFirestore
 import com.mytask.Notification.NotificationHelper
@@ -11,10 +13,12 @@ import com.mytask.data.local.entity.ScheduleEntity
 import com.mytask.data.local.entity.TaskEntity
 import com.mytask.debug.AuthDebugLog
 import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.tasks.await
+import kotlinx.coroutines.withTimeout
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
@@ -29,6 +33,10 @@ class CloudDataSyncRepository @Inject constructor(
 ) {
 
     private val firestore = FirebaseFirestore.getInstance()
+
+    private companion object {
+        const val CLOUD_TIMEOUT_MS = 15_000L
+    }
 
     private fun document(uid: String) =
         firestore
@@ -52,33 +60,57 @@ class CloudDataSyncRepository @Inject constructor(
     suspend fun syncOnLogin(uid: String): Boolean {
         require(uid.isNotBlank())
 
-        AuthDebugLog.d("CLOUD_RESTORE start: uid=${AuthDebugLog.uid(uid)}")
+        AuthDebugLog.d(
+            "CLOUD_RESTORE start: uid=${AuthDebugLog.uid(uid)} online=${isNetworkAvailable()}"
+        )
 
-        clearLocalAcademicData()
-        NotificationHelper.cancelAllAppNotifications(context)
-        ReminderScheduler.cancel(context)
-        AuthDebugLog.d("CLOUD_RESTORE local workspace cleared")
+        // Never destroy the local workspace before the cloud restore has
+        // actually succeeded. This is important for offline-first behavior.
+        if (!isNetworkAvailable()) {
+            AuthDebugLog.d(
+                "CLOUD_RESTORE skipped: device offline, keeping local Room data"
+            )
+            ReminderScheduler.initialize(context)
+            return false
+        }
 
         return try {
-            val snapshot = document(uid).get().await()
-            val cloudJson = snapshot.getString("dataJson")?.takeIf { it.isNotBlank() }
+            val snapshot = withTimeout(CLOUD_TIMEOUT_MS) {
+                document(uid)
+                    .get()
+                    .await()
+            }
+
+            val cloudJson = snapshot
+                .getString("dataJson")
+                ?.takeIf { it.isNotBlank() }
 
             if (cloudJson == null) {
-                AuthDebugLog.d("CLOUD_RESTORE no cloud data: uid=${AuthDebugLog.uid(uid)}")
+                AuthDebugLog.d(
+                    "CLOUD_RESTORE no cloud data: uid=${AuthDebugLog.uid(uid)}"
+                )
                 ReminderScheduler.initialize(context)
                 false
             } else {
                 replaceLocalDatabase(cloudJson)
                 saveLocalJson(uid, cloudJson)
+                NotificationHelper.cancelAllAppNotifications(context)
+                ReminderScheduler.cancel(context)
+                ReminderScheduler.initialize(context)
                 AuthDebugLog.d(
                     "CLOUD_RESTORE success: uid=${AuthDebugLog.uid(uid)} jsonLength=${cloudJson.length}"
                 )
-                ReminderScheduler.initialize(context)
                 true
             }
         } catch (error: Throwable) {
+            val message = when (error) {
+                is TimeoutCancellationException ->
+                    "Cloud restore timed out after ${CLOUD_TIMEOUT_MS / 1000}s."
+                else -> error.message ?: "Cloud restore failed."
+            }
+
             AuthDebugLog.e(
-                "CLOUD_RESTORE failed: uid=${AuthDebugLog.uid(uid)} ${error::class.simpleName}: ${error.message}",
+                "CLOUD_RESTORE failed: uid=${AuthDebugLog.uid(uid)} ${error::class.simpleName}: $message",
                 error
             )
             ReminderScheduler.initialize(context)
@@ -88,28 +120,75 @@ class CloudDataSyncRepository @Inject constructor(
 
     suspend fun uploadCurrentData(uid: String) {
         require(uid.isNotBlank())
-        AuthDebugLog.d("CLOUD_UPLOAD start: uid=${AuthDebugLog.uid(uid)}")
+
+        if (!isNetworkAvailable()) {
+            AuthDebugLog.d(
+                "CLOUD_UPLOAD rejected: device offline uid=${AuthDebugLog.uid(uid)}"
+            )
+            throw IllegalStateException(
+                "Tidak ada koneksi internet. Hubungkan internet lalu coba lagi."
+            )
+        }
+
+        AuthDebugLog.d(
+            "CLOUD_UPLOAD start: uid=${AuthDebugLog.uid(uid)} online=true"
+        )
+
         val json = databaseJson.first()
+        AuthDebugLog.d(
+            "CLOUD_UPLOAD payload ready: uid=${AuthDebugLog.uid(uid)} jsonLength=${json.length}"
+        )
+
         uploadJson(uid, json)
     }
 
     suspend fun uploadJson(uid: String, json: String) {
         require(uid.isNotBlank())
 
-        document(uid)
-            .set(
-                mapOf(
-                    "uid" to uid,
-                    "dataJson" to json,
-                    "updatedAt" to System.currentTimeMillis()
-                )
+        if (!isNetworkAvailable()) {
+            AuthDebugLog.d(
+                "CLOUD_UPLOAD rejected before Firestore: device offline uid=${AuthDebugLog.uid(uid)}"
             )
-            .await()
+            throw IllegalStateException(
+                "Tidak ada koneksi internet. Hubungkan internet lalu coba lagi."
+            )
+        }
 
-        saveLocalJson(uid, json)
-        AuthDebugLog.d(
-            "CLOUD_UPLOAD success: uid=${AuthDebugLog.uid(uid)} jsonLength=${json.length}"
-        )
+        try {
+            withTimeout(CLOUD_TIMEOUT_MS) {
+                document(uid)
+                    .set(
+                        mapOf(
+                            "uid" to uid,
+                            "dataJson" to json,
+                            "updatedAt" to System.currentTimeMillis()
+                        )
+                    )
+                    .await()
+            }
+
+            saveLocalJson(uid, json)
+            AuthDebugLog.d(
+                "CLOUD_UPLOAD success: uid=${AuthDebugLog.uid(uid)} jsonLength=${json.length}"
+            )
+        } catch (error: Throwable) {
+            val message = when (error) {
+                is TimeoutCancellationException ->
+                    "Cloud upload timed out after ${CLOUD_TIMEOUT_MS / 1000}s."
+                else -> error.message ?: "Cloud upload failed."
+            }
+
+            AuthDebugLog.e(
+                "CLOUD_UPLOAD failed: uid=${AuthDebugLog.uid(uid)} ${error::class.simpleName}: $message",
+                error
+            )
+
+            if (error is TimeoutCancellationException) {
+                throw IllegalStateException(message, error)
+            }
+
+            throw error
+        }
     }
 
     suspend fun exportLocalJson(uid: String): File {
@@ -135,9 +214,12 @@ class CloudDataSyncRepository @Inject constructor(
         context.filesDir
             .listFiles()
             ?.filter {
-                it.name.startsWith("mytask_data_") && it.name.endsWith(".json")
+                it.name.startsWith("mytask_data_") &&
+                    it.name.endsWith(".json")
             }
-            ?.forEach { file -> runCatching { file.delete() } }
+            ?.forEach { file ->
+                runCatching { file.delete() }
+            }
 
         AuthDebugLog.d("LOCAL_SESSION clear completed")
     }
@@ -161,6 +243,18 @@ class CloudDataSyncRepository @Inject constructor(
         AuthDebugLog.d(
             "ROOM restore completed: courses=${courses.size} tasks=${tasks.size} schedules=${schedules.size}"
         )
+    }
+
+    private fun isNetworkAvailable(): Boolean {
+        val connectivityManager =
+            context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+
+        val network = connectivityManager.activeNetwork ?: return false
+        val capabilities =
+            connectivityManager.getNetworkCapabilities(network) ?: return false
+
+        return capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) &&
+            capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)
     }
 
     private fun buildJson(
