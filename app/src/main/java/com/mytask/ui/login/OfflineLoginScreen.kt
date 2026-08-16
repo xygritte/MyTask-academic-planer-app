@@ -14,6 +14,7 @@ import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.PersonOutline
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.WifiOff
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -21,6 +22,7 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -86,7 +88,7 @@ fun OfflineLoginScreen(
                 text = "Login akun dan sinkronisasi data membutuhkan koneksi internet. Saat offline, hanya Guest yang dapat digunakan.",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier.fillMaxWidth()
             )
 
             Spacer(Modifier.height(18.dp))
@@ -147,25 +149,80 @@ fun OfflineLoginScreen(
     }
 
     if (showGuestForm) {
-        GuestProfileDialog(
-            name = name,
-            program = program,
-            isLoading = isLoading,
-            onNameChange = { name = it; errorMessage = null },
-            onProgramChange = { program = it; errorMessage = null },
-            onDismiss = {
+        AlertDialog(
+            onDismissRequest = {
                 if (!isLoading) showGuestForm = false
             },
-            onConfirm = {
-                scope.launch {
-                    isLoading = true
-                    errorMessage = null
-                    authRepository.continueAsGuest(name, program)
-                        .onSuccess {
-                            showGuestForm = false
+            title = {
+                Text("Masuk sebagai Guest", fontWeight = FontWeight.Bold)
+            },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Text(
+                        text = "Data guest hanya tersimpan di perangkat ini.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    OutlinedTextField(
+                        value = name,
+                        onValueChange = { name = it; errorMessage = null },
+                        modifier = Modifier.fillMaxWidth(),
+                        label = { Text("Nama Mahasiswa") },
+                        singleLine = true,
+                        enabled = !isLoading
+                    )
+                    OutlinedTextField(
+                        value = program,
+                        onValueChange = { program = it; errorMessage = null },
+                        modifier = Modifier.fillMaxWidth(),
+                        label = { Text("Program Studi") },
+                        singleLine = true,
+                        enabled = !isLoading
+                    )
+                    errorMessage?.let { message ->
+                        Text(
+                            text = message,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.error
+                        )
+                    }
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        scope.launch {
+                            isLoading = true
+                            errorMessage = null
+                            authRepository.continueAsGuest(name, program)
+                                .onSuccess { showGuestForm = false }
+                                .onFailure {
+                                    errorMessage = it.message ?: "Guest gagal dimulai."
+                                }
+                            isLoading = false
                         }
-                        .onFailure { errorMessage = error.message ?: "Guest gagal dimulai." }
-                    isLoading = false
+                    },
+                    enabled = !isLoading &&
+                        name.trim().isNotBlank() &&
+                        program.trim().isNotBlank()
+                ) {
+                    if (isLoading) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(18.dp),
+                            strokeWidth = 2.dp,
+                            color = MaterialTheme.colorScheme.onPrimary
+                        )
+                    } else {
+                        Text("Masuk")
+                    }
+                }
+            },
+            dismissButton = {
+                OutlinedButton(
+                    onClick = { showGuestForm = false },
+                    enabled = !isLoading
+                ) {
+                    Text("Batal")
                 }
             }
         )
