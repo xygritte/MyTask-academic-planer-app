@@ -12,6 +12,7 @@ import com.google.firebase.auth.UserProfileChangeRequest
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.SetOptions
 import com.mytask.debug.AuthDebugLog
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
@@ -60,6 +61,7 @@ class FirebaseAuthRepository @Inject constructor(
         password: String
     ): Result<UserProfile> {
         AuthDebugLog.d("REGISTER start")
+
         return try {
             val authResult = auth
                 .createUserWithEmailAndPassword(
@@ -92,6 +94,19 @@ class FirebaseAuthRepository @Inject constructor(
                 program = cleanProgram
             )
 
+            // Persist the local session immediately after Firebase succeeds.
+            // The Compose login screen may leave the composition as soon as
+            // AuthState becomes signed-in, so this must not depend on Firestore.
+            userProfileRepository.saveProfile(
+                uid = user.uid,
+                name = profile.name,
+                program = profile.program
+            )
+            userProfileRepository.markCloudRestorePending()
+            AuthDebugLog.d(
+                "REGISTER local session committed: uid=${AuthDebugLog.uid(user.uid)}"
+            )
+
             runCatching {
                 saveCloudProfile(user, profile)
                 AuthDebugLog.d("REGISTER Firestore profile saved")
@@ -99,20 +114,16 @@ class FirebaseAuthRepository @Inject constructor(
                 AuthDebugLog.e("REGISTER Firestore profile save failed", it)
             }
 
-            userProfileRepository.saveProfile(
-                uid = user.uid,
-                name = profile.name,
-                program = profile.program
-            )
-            AuthDebugLog.d(
-                "REGISTER local profile saved: uid=${AuthDebugLog.uid(user.uid)}"
-            )
-
-            userProfileRepository.markCloudRestorePending()
-            AuthDebugLog.d("REGISTER restorePending=true")
-
             Result.success(profile)
         } catch (error: Throwable) {
+            if (error is CancellationException) {
+                AuthDebugLog.e(
+                    "REGISTER coroutine cancelled after Firebase authentication; keeping signed-in session",
+                    error
+                )
+                throw error
+            }
+
             AuthDebugLog.e(
                 "REGISTER failed: ${error::class.simpleName}: ${error.message}",
                 error
@@ -128,6 +139,7 @@ class FirebaseAuthRepository @Inject constructor(
         password: String
     ): Result<UserProfile> {
         AuthDebugLog.d("EMAIL_LOGIN start")
+
         return try {
             val authResult = auth
                 .signInWithEmailAndPassword(
@@ -143,14 +155,38 @@ class FirebaseAuthRepository @Inject constructor(
                 "EMAIL_LOGIN Firebase success: uid=${AuthDebugLog.uid(user.uid)}"
             )
 
+            // Commit a local session before any Firestore call. This guarantees
+            // the app can continue even when the login screen composition is
+            // removed immediately after Firebase AuthState changes.
+            val immediateProfile = UserProfile(
+                name = user.displayName
+                    ?.trim()
+                    ?.takeIf { it.isNotBlank() }
+                    ?: "Mahasiswa",
+                program = "Program Studi belum diatur"
+            )
+
+            userProfileRepository.saveProfile(
+                uid = user.uid,
+                name = immediateProfile.name,
+                program = immediateProfile.program
+            )
+            userProfileRepository.markCloudRestorePending()
+            AuthDebugLog.d(
+                "EMAIL_LOGIN local session committed: uid=${AuthDebugLog.uid(user.uid)} restorePending=true"
+            )
+
             val profile = runCatching {
                 loadCloudProfile(user)
             }.onSuccess {
                 AuthDebugLog.d("EMAIL_LOGIN Firestore profile loaded")
             }.onFailure {
-                AuthDebugLog.e("EMAIL_LOGIN Firestore profile load failed; using fallback", it)
+                AuthDebugLog.e(
+                    "EMAIL_LOGIN Firestore profile load failed; keeping local session",
+                    it
+                )
             }.getOrElse {
-                cachedOrFirebaseProfile(user)
+                immediateProfile
             }
 
             userProfileRepository.saveProfile(
@@ -162,11 +198,16 @@ class FirebaseAuthRepository @Inject constructor(
                 "EMAIL_LOGIN local profile saved: uid=${AuthDebugLog.uid(user.uid)}"
             )
 
-            userProfileRepository.markCloudRestorePending()
-            AuthDebugLog.d("EMAIL_LOGIN restorePending=true")
-
             Result.success(profile)
         } catch (error: Throwable) {
+            if (error is CancellationException) {
+                AuthDebugLog.e(
+                    "EMAIL_LOGIN coroutine cancelled after Firebase authentication; keeping signed-in session",
+                    error
+                )
+                throw error
+            }
+
             AuthDebugLog.e(
                 "EMAIL_LOGIN failed: ${error::class.simpleName}: ${error.message}",
                 error
@@ -181,6 +222,7 @@ class FirebaseAuthRepository @Inject constructor(
         context: Context
     ): Result<UserProfile> {
         AuthDebugLog.d("GOOGLE_LOGIN start")
+
         return try {
             val credentialManager = CredentialManager.create(context)
 
@@ -224,37 +266,48 @@ class FirebaseAuthRepository @Inject constructor(
                 "GOOGLE_LOGIN Firebase success: uid=${AuthDebugLog.uid(user.uid)}"
             )
 
+            val immediateProfile = UserProfile(
+                name = user.displayName
+                    ?.trim()
+                    ?.takeIf { it.isNotBlank() }
+                    ?: "Mahasiswa",
+                program = "Program Studi belum diatur"
+            )
+
+            // Same rule as Email login: save the local authenticated session
+            // before attempting any network/profile work.
+            userProfileRepository.saveProfile(
+                uid = user.uid,
+                name = immediateProfile.name,
+                program = immediateProfile.program
+            )
+            userProfileRepository.markCloudRestorePending()
+            AuthDebugLog.d(
+                "GOOGLE_LOGIN local session committed: uid=${AuthDebugLog.uid(user.uid)} restorePending=true"
+            )
+
             val existingProfile = runCatching {
                 loadCloudProfile(user)
             }.onSuccess {
                 AuthDebugLog.d("GOOGLE_LOGIN Firestore profile loaded")
             }.onFailure {
-                AuthDebugLog.e("GOOGLE_LOGIN Firestore profile load failed", it)
+                AuthDebugLog.e(
+                    "GOOGLE_LOGIN Firestore profile load failed; keeping local session",
+                    it
+                )
             }.getOrNull()
 
-            val profile = existingProfile
-                ?: run {
-                    val localFallback = runCatching {
-                        userProfileRepository.profile.first()
-                    }.getOrNull()
-
-                    localFallback?.takeIf {
-                        userProfileRepository.uid.first() == user.uid
-                    } ?: UserProfile(
-                        name = user.displayName
-                            ?.trim()
-                            ?.takeIf { it.isNotBlank() }
-                            ?: "Mahasiswa",
-                        program = "Program Studi belum diatur"
-                    )
-                }
+            val profile = existingProfile ?: immediateProfile
 
             if (existingProfile == null) {
                 runCatching {
                     saveCloudProfile(user, profile)
                     AuthDebugLog.d("GOOGLE_LOGIN new Firestore profile saved")
                 }.onFailure {
-                    AuthDebugLog.e("GOOGLE_LOGIN new Firestore profile save failed", it)
+                    AuthDebugLog.e(
+                        "GOOGLE_LOGIN new Firestore profile save failed",
+                        it
+                    )
                 }
             }
 
@@ -267,11 +320,16 @@ class FirebaseAuthRepository @Inject constructor(
                 "GOOGLE_LOGIN local profile saved: uid=${AuthDebugLog.uid(user.uid)}"
             )
 
-            userProfileRepository.markCloudRestorePending()
-            AuthDebugLog.d("GOOGLE_LOGIN restorePending=true")
-
             Result.success(profile)
         } catch (error: Throwable) {
+            if (error is CancellationException) {
+                AuthDebugLog.e(
+                    "GOOGLE_LOGIN coroutine cancelled after Firebase authentication; keeping signed-in session",
+                    error
+                )
+                throw error
+            }
+
             AuthDebugLog.e(
                 "GOOGLE_LOGIN failed: ${error::class.simpleName}: ${error.message}",
                 error
@@ -287,6 +345,7 @@ class FirebaseAuthRepository @Inject constructor(
         program: String
     ): Result<UserProfile> {
         AuthDebugLog.d("GUEST start")
+
         return runCatching {
             cloudDataSyncRepository.clearLocalSessionData()
             AuthDebugLog.d("GUEST local workspace cleared")
@@ -352,6 +411,10 @@ class FirebaseAuthRepository @Inject constructor(
             )
             Result.success(profile)
         } catch (error: Throwable) {
+            if (error is CancellationException) {
+                throw error
+            }
+
             AuthDebugLog.e("RELOAD_PROFILE failed", error)
             val cached = userProfileRepository.profile.first()
 
