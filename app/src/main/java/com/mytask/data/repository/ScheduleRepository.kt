@@ -11,37 +11,16 @@ class ScheduleRepository @Inject constructor(
     private val scheduleDao: ScheduleDao
 ) {
 
-    fun getAllSchedules(): Flow<List<ScheduleEntity>> {
-        return scheduleDao.getAllSchedules()
-    }
+    fun getAllSchedules(): Flow<List<ScheduleEntity>> = scheduleDao.getAllSchedules()
 
-    fun getScheduleById(
-        id: Long
-    ): Flow<ScheduleEntity?> {
-        return scheduleDao.getScheduleById(id)
-    }
+    fun getScheduleById(id: Long): Flow<ScheduleEntity?> = scheduleDao.getScheduleById(id)
 
-    fun getSchedulesByDay(
-        dayOfWeek: Int
-    ): Flow<List<ScheduleEntity>> {
-        return scheduleDao.getSchedulesByDay(dayOfWeek)
-    }
+    fun getSchedulesByDay(dayOfWeek: Int): Flow<List<ScheduleEntity>> =
+        scheduleDao.getSchedulesByDay(dayOfWeek)
 
-    suspend fun addSchedule(
-        schedule: ScheduleEntity
-    ) {
-        scheduleDao.insert(schedule)
-    }
+    suspend fun addSchedule(schedule: ScheduleEntity): Long = scheduleDao.insert(schedule)
 
-    suspend fun updateSchedule(
-        schedule: ScheduleEntity
-    ) {
-        scheduleDao.update(schedule)
-    }
+    suspend fun updateSchedule(schedule: ScheduleEntity) = scheduleDao.update(schedule)
 
-    suspend fun deleteSchedule(
-        schedule: ScheduleEntity
-    ) {
-        scheduleDao.delete(schedule)
-    }
+    suspend fun deleteSchedule(schedule: ScheduleEntity) = scheduleDao.delete(schedule)
 }
