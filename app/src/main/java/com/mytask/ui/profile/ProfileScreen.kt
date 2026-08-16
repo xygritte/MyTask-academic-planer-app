@@ -25,7 +25,6 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowForwardIos
 import androidx.compose.material.icons.filled.CameraAlt
-import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Cloud
 import androidx.compose.material.icons.filled.CloudUpload
 import androidx.compose.material.icons.filled.Edit
@@ -106,7 +105,7 @@ fun ProfileScreen(
     val scope = rememberCoroutineScope()
 
     val photoPicker = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.GetContent()
+        contract = ActivityResultContracts.OpenDocument()
     ) { uri: Uri? ->
         if (uri != null) {
             scope.launch {
@@ -120,6 +119,10 @@ fun ProfileScreen(
                 AuthDebugLog.d("PROFILE_PHOTO selected")
             }
         }
+    }
+
+    fun launchPhotoPicker() {
+        photoPicker.launch(arrayOf("image/*"))
     }
 
     Scaffold(
@@ -168,7 +171,7 @@ fun ProfileScreen(
                             modifier = Modifier
                                 .fillMaxSize()
                                 .clip(CircleShape)
-                                .clickable { photoPicker.launch("image/*") },
+                                .clickable(onClick = ::launchPhotoPicker),
                             shape = CircleShape,
                             color = MaterialTheme.colorScheme.secondaryContainer
                         ) {
@@ -202,7 +205,7 @@ fun ProfileScreen(
                             shadowElevation = 4.dp
                         ) {
                             IconButton(
-                                onClick = { photoPicker.launch("image/*") },
+                                onClick = ::launchPhotoPicker,
                                 modifier = Modifier.fillMaxSize()
                             ) {
                                 Icon(
