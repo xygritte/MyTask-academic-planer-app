@@ -22,81 +22,50 @@ class ScheduleViewModel @Inject constructor(
     val schedules: StateFlow<List<ScheduleEntity>> =
         scheduleRepository
             .getAllSchedules()
-            .stateIn(
-                viewModelScope,
-                SharingStarted.WhileSubscribed(5000),
-                emptyList()
-            )
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     val courses: StateFlow<List<CourseEntity>> =
         courseRepository
             .getAllCourses()
-            .stateIn(
-                viewModelScope,
-                SharingStarted.WhileSubscribed(5000),
-                emptyList()
-            )
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
-    fun getScheduleById(
-        id: Long
-    ): StateFlow<ScheduleEntity?> =
+    fun getScheduleById(id: Long): StateFlow<ScheduleEntity?> =
         scheduleRepository
             .getScheduleById(id)
-            .stateIn(
-                viewModelScope,
-                SharingStarted.WhileSubscribed(5000),
-                null
-            )
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
 
     fun addSchedule(
         courseId: Long?,
         dayOfWeek: Int,
-        startTime: String,
-        endTime: String,
+        startMinutes: Int,
+        endMinutes: Int,
         room: String,
         onSaved: () -> Unit
     ) {
-
         viewModelScope.launch {
-
             scheduleRepository.addSchedule(
                 ScheduleEntity(
                     courseId = courseId,
                     dayOfWeek = dayOfWeek,
-                    startTime = startTime,
-                    endTime = endTime,
+                    startMinutes = startMinutes,
+                    endMinutes = endMinutes,
                     room = room
                 )
             )
-
             onSaved()
         }
     }
 
-    fun updateSchedule(
-        schedule: ScheduleEntity,
-        onSaved: () -> Unit
-    ) {
-
+    fun updateSchedule(schedule: ScheduleEntity, onSaved: () -> Unit) {
         viewModelScope.launch {
-
-            scheduleRepository.updateSchedule(
-                schedule
-            )
-
+            scheduleRepository.updateSchedule(schedule)
             onSaved()
         }
     }
 
-    fun deleteSchedule(
-        schedule: ScheduleEntity
-    ) {
-
+    fun deleteSchedule(schedule: ScheduleEntity) {
         viewModelScope.launch {
-
-            scheduleRepository.deleteSchedule(
-                schedule
-            )
+            scheduleRepository.deleteSchedule(schedule)
         }
     }
 }
