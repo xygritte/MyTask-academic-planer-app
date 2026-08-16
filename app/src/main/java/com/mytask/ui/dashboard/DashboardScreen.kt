@@ -98,7 +98,7 @@ fun DashboardScreen(
                 title = {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Image(
-                            painter = painterResource(R.mipmap.ic_launcher),
+                            painter = painterResource(R.mipmap.mytask_background),
                             contentDescription = "MyTask",
                             modifier = Modifier
                                 .size(40.dp)
@@ -122,9 +122,7 @@ fun DashboardScreen(
             )
         },
         floatingActionButton = {
-            FloatingActionButton(
-                onClick = onAddDataClick
-            ) {
+            FloatingActionButton(onClick = onAddDataClick) {
                 Icon(
                     imageVector = Icons.Default.Add,
                     contentDescription = "Tambah Data"
@@ -145,7 +143,6 @@ fun DashboardScreen(
             verticalArrangement = Arrangement.spacedBy(20.dp)
         ) {
             item { WelcomeHeader() }
-
             item {
                 TodaySummaryCard(
                     scheduleCount = todaySchedules.size,
@@ -153,7 +150,6 @@ fun DashboardScreen(
                     onClick = onTasksClick
                 )
             }
-
             item {
                 SectionHeader(
                     title = "Overview",
@@ -161,7 +157,6 @@ fun DashboardScreen(
                     onClick = onCoursesClick
                 )
             }
-
             item {
                 Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     Row(
@@ -183,7 +178,6 @@ fun DashboardScreen(
                             onClick = onTasksClick
                         )
                     }
-
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(12.dp)
@@ -206,7 +200,6 @@ fun DashboardScreen(
                     }
                 }
             }
-
             item {
                 SectionHeader(
                     title = "Jadwal Hari Ini",
@@ -214,7 +207,6 @@ fun DashboardScreen(
                     onClick = onScheduleClick
                 )
             }
-
             item {
                 TodayScheduleCard(
                     schedules = todaySchedules,
@@ -222,7 +214,6 @@ fun DashboardScreen(
                     onClick = onScheduleClick
                 )
             }
-
             item {
                 SectionHeader(
                     title = "Tugas Mendatang",
@@ -230,16 +221,11 @@ fun DashboardScreen(
                     onClick = onTasksClick
                 )
             }
-
             if (upcomingTasks.isEmpty()) {
                 item { EmptyTaskCard() }
             } else {
                 items(items = upcomingTasks, key = { it.id }) { task ->
-                    DashboardTaskCard(
-                        task = task,
-                        courses = courses,
-                        onClick = onTasksClick
-                    )
+                    DashboardTaskCard(task = task, courses = courses, onClick = onTasksClick)
                 }
             }
         }
@@ -254,111 +240,51 @@ private fun WelcomeHeader() {
         in 12..17 -> "Selamat sore"
         else -> "Selamat malam"
     }
-
     Column {
-        Text(
-            text = greeting,
-            style = MaterialTheme.typography.bodyLarge,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
-        )
+        Text(greeting, style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Spacer(Modifier.height(2.dp))
-        Text(
-            text = "Siap mengatur hari ini?",
-            style = MaterialTheme.typography.headlineSmall,
-            fontWeight = FontWeight.Bold
-        )
+        Text("Siap mengatur hari ini?", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
     }
 }
 
 @Composable
-private fun TodaySummaryCard(
-    scheduleCount: Int,
-    activeTaskCount: Int,
-    onClick: () -> Unit
-) {
+private fun TodaySummaryCard(scheduleCount: Int, activeTaskCount: Int, onClick: () -> Unit) {
     Card(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable(onClick = onClick),
+        modifier = Modifier.fillMaxWidth().clickable(onClick = onClick),
         shape = MaterialTheme.shapes.large,
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.primaryContainer
-        )
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)
     ) {
         Column(Modifier.padding(20.dp)) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Surface(
-                    modifier = Modifier.size(44.dp),
-                    shape = CircleShape,
-                    color = MaterialTheme.colorScheme.primary
-                ) {
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Surface(Modifier.size(44.dp), CircleShape, color = MaterialTheme.colorScheme.primary) {
                     Box(contentAlignment = Alignment.Center) {
-                        Icon(
-                            imageVector = Icons.Default.Task,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.onPrimary
-                        )
+                        Icon(Icons.Default.Task, contentDescription = null, tint = MaterialTheme.colorScheme.onPrimary)
                     }
                 }
                 Spacer(Modifier.width(14.dp))
                 Column(Modifier.weight(1f)) {
-                    Text(
-                        text = "Hari ini",
-                        style = MaterialTheme.typography.titleLarge,
-                        fontWeight = FontWeight.Bold
-                    )
+                    Text("Hari ini", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
                     Spacer(Modifier.height(2.dp))
                     Text(
-                        text = "$activeTaskCount tugas aktif · $scheduleCount jadwal",
+                        "$activeTaskCount tugas aktif · $scheduleCount jadwal",
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onPrimaryContainer
                     )
                 }
-                Icon(
-                    imageVector = Icons.Default.KeyboardArrowRight,
-                    contentDescription = "Buka tugas",
-                    tint = MaterialTheme.colorScheme.onPrimaryContainer
-                )
+                Icon(Icons.Default.KeyboardArrowRight, contentDescription = "Buka tugas", tint = MaterialTheme.colorScheme.onPrimaryContainer)
             }
         }
     }
 }
 
 @Composable
-private fun SectionHeader(
-    title: String,
-    action: String?,
-    onClick: () -> Unit
-) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Text(
-            text = title,
-            style = MaterialTheme.typography.titleLarge,
-            fontWeight = FontWeight.Bold,
-            modifier = Modifier.weight(1f)
-        )
+private fun SectionHeader(title: String, action: String?, onClick: () -> Unit) {
+    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        Text(title, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
         if (action != null) {
-            Row(
-                modifier = Modifier.clickable(onClick = onClick),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    text = action,
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.primary
-                )
-                Icon(
-                    imageVector = Icons.Default.KeyboardArrowRight,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.size(18.dp)
-                )
+            Row(modifier = Modifier.clickable(onClick = onClick), verticalAlignment = Alignment.CenterVertically) {
+                Text(action, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
+                Icon(Icons.Default.KeyboardArrowRight, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(18.dp))
             }
         }
     }
@@ -377,83 +303,50 @@ private fun OverviewCard(
         modifier = modifier.clickable(onClick = onClick),
         shape = MaterialTheme.shapes.large,
         colors = CardDefaults.cardColors(
-            containerColor = if (isAlert) {
-                MaterialTheme.colorScheme.errorContainer
-            } else {
-                MaterialTheme.colorScheme.surface
-            }
+            containerColor = if (isAlert) MaterialTheme.colorScheme.errorContainer else MaterialTheme.colorScheme.surface
         ),
         border = BorderStroke(
             1.dp,
-            if (isAlert) {
-                MaterialTheme.colorScheme.error.copy(alpha = 0.45f)
-            } else {
-                MaterialTheme.colorScheme.outline.copy(alpha = 0.45f)
-            }
+            if (isAlert) MaterialTheme.colorScheme.error.copy(alpha = 0.45f)
+            else MaterialTheme.colorScheme.outline.copy(alpha = 0.45f)
         )
     ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(14.dp)
-        ) {
+        Column(Modifier.fillMaxWidth().padding(14.dp)) {
             Surface(
-                modifier = Modifier.size(34.dp),
-                shape = RoundedCornerShape(10.dp),
-                color = if (isAlert) {
-                    MaterialTheme.colorScheme.error.copy(alpha = 0.14f)
-                } else {
-                    MaterialTheme.colorScheme.secondaryContainer
-                }
+                Modifier.size(34.dp),
+                RoundedCornerShape(10.dp),
+                color = if (isAlert) MaterialTheme.colorScheme.error.copy(alpha = 0.14f) else MaterialTheme.colorScheme.secondaryContainer
             ) {
                 Box(contentAlignment = Alignment.Center) {
                     Icon(
-                        imageVector = icon,
+                        icon,
                         contentDescription = null,
-                        tint = if (isAlert) {
-                            MaterialTheme.colorScheme.error
-                        } else {
-                            MaterialTheme.colorScheme.primary
-                        },
+                        tint = if (isAlert) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary,
                         modifier = Modifier.size(21.dp)
                     )
                 }
             }
             Spacer(Modifier.height(10.dp))
             Text(
-                text = value,
+                value,
                 style = MaterialTheme.typography.headlineSmall,
                 fontWeight = FontWeight.Bold,
-                color = if (isAlert) {
-                    MaterialTheme.colorScheme.onErrorContainer
-                } else {
-                    MaterialTheme.colorScheme.onSurface
-                }
+                color = if (isAlert) MaterialTheme.colorScheme.onErrorContainer else MaterialTheme.colorScheme.onSurface
             )
             Spacer(Modifier.height(2.dp))
             Text(
-                text = title,
+                title,
                 style = MaterialTheme.typography.bodyMedium,
-                color = if (isAlert) {
-                    MaterialTheme.colorScheme.onErrorContainer.copy(alpha = 0.85f)
-                } else {
-                    MaterialTheme.colorScheme.onSurfaceVariant
-                }
+                color = if (isAlert) MaterialTheme.colorScheme.onErrorContainer.copy(alpha = 0.85f) else MaterialTheme.colorScheme.onSurfaceVariant
             )
         }
     }
 }
 
 @Composable
-private fun TodayScheduleCard(
-    schedules: List<ScheduleEntity>,
-    courses: List<CourseEntity>,
-    onClick: () -> Unit
-) {
+private fun TodayScheduleCard(schedules: List<ScheduleEntity>, courses: List<CourseEntity>, onClick: () -> Unit) {
     Card(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable(onClick = onClick),
+        modifier = Modifier.fillMaxWidth().clickable(onClick = onClick),
         shape = MaterialTheme.shapes.large,
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.45f))
@@ -461,31 +354,15 @@ private fun TodayScheduleCard(
         if (schedules.isEmpty()) {
             Column(Modifier.padding(20.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Surface(
-                        modifier = Modifier.size(40.dp),
-                        shape = RoundedCornerShape(12.dp),
-                        color = MaterialTheme.colorScheme.surfaceVariant
-                    ) {
+                    Surface(Modifier.size(40.dp), RoundedCornerShape(12.dp), color = MaterialTheme.colorScheme.surfaceVariant) {
                         Box(contentAlignment = Alignment.Center) {
-                            Icon(
-                                Icons.Default.Schedule,
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.primary
-                            )
+                            Icon(Icons.Default.Schedule, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
                         }
                     }
                     Spacer(Modifier.width(12.dp))
                     Column {
-                        Text(
-                            text = "Tidak ada jadwal",
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.SemiBold
-                        )
-                        Text(
-                            text = "Hari ini kamu tidak memiliki jadwal kuliah.",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
+                        Text("Tidak ada jadwal", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                        Text("Hari ini kamu tidak memiliki jadwal kuliah.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
             }
@@ -493,7 +370,7 @@ private fun TodayScheduleCard(
             Column(Modifier.padding(vertical = 8.dp)) {
                 schedules.forEachIndexed { index, schedule ->
                     val course = courses.find { it.id == schedule.courseId }
-                    TodayScheduleRow(schedule = schedule, courseName = course?.name ?: "Mata Kuliah")
+                    TodayScheduleRow(schedule, course?.name ?: "Mata Kuliah")
                     if (index < schedules.lastIndex) {
                         HorizontalDivider(
                             modifier = Modifier.padding(horizontal = 18.dp, vertical = 4.dp),
@@ -508,23 +385,18 @@ private fun TodayScheduleCard(
 
 @Composable
 private fun TodayScheduleRow(schedule: ScheduleEntity, courseName: String) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 18.dp, vertical = 12.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
+    Row(Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
         Column(Modifier.width(68.dp)) {
-            Text(text = schedule.startTime, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-            Text(text = schedule.endTime, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(schedule.startTime, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+            Text(schedule.endTime, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         Spacer(Modifier.width(14.dp))
-        Surface(modifier = Modifier.size(8.dp), shape = CircleShape, color = MaterialTheme.colorScheme.primary) {}
+        Surface(Modifier.size(8.dp), CircleShape, color = MaterialTheme.colorScheme.primary) {}
         Spacer(Modifier.width(14.dp))
         Column(Modifier.weight(1f)) {
-            Text(text = courseName, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+            Text(courseName, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
             if (schedule.room.isNotBlank()) {
-                Text(text = schedule.room, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(schedule.room, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
     }
@@ -537,44 +409,39 @@ private fun DashboardTaskCard(task: TaskEntity, courses: List<CourseEntity>, onC
     val overdue = task.deadline?.let { isOverdue(it) } == true
 
     Card(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable(onClick = onClick),
+        modifier = Modifier.fillMaxWidth().clickable(onClick = onClick),
         shape = MaterialTheme.shapes.large,
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
         border = BorderStroke(
             1.dp,
-            if (overdue) MaterialTheme.colorScheme.error.copy(alpha = 0.5f)
-            else MaterialTheme.colorScheme.outline.copy(alpha = 0.45f)
+            if (overdue) MaterialTheme.colorScheme.error.copy(alpha = 0.45f) else MaterialTheme.colorScheme.outline.copy(alpha = 0.45f)
         )
     ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 14.dp, vertical = 12.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Surface(
-                modifier = Modifier.size(10.dp),
-                shape = CircleShape,
-                color = if (overdue) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary
-            ) {}
-            Spacer(Modifier.width(12.dp))
-            Column(Modifier.weight(1f)) {
-                Text(text = task.title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                Text(
-                    text = course?.name ?: "Mata Kuliah belum dipilih",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-                if (deadlineLabel != null) {
-                    Spacer(Modifier.height(6.dp))
-                    Text(
-                        text = deadlineLabel,
-                        style = MaterialTheme.typography.labelMedium,
-                        color = if (overdue) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary
-                    )
+        Column(Modifier.padding(16.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Surface(
+                    Modifier.size(34.dp),
+                    RoundedCornerShape(10.dp),
+                    color = if (overdue) MaterialTheme.colorScheme.errorContainer else MaterialTheme.colorScheme.secondaryContainer
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Icon(
+                            Icons.Default.Task,
+                            contentDescription = null,
+                            tint = if (overdue) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
                 }
+                Spacer(Modifier.width(12.dp))
+                Column(Modifier.weight(1f)) {
+                    Text(task.title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                    Text(course?.name ?: "Mata Kuliah belum dipilih", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
+            if (deadlineLabel != null) {
+                Spacer(Modifier.height(10.dp))
+                Text(deadlineLabel, style = MaterialTheme.typography.labelMedium, color = if (overdue) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
     }
@@ -587,25 +454,42 @@ private fun EmptyTaskCard() {
         shape = MaterialTheme.shapes.large,
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
     ) {
-        Text(
-            text = "Belum ada tugas mendatang.",
-            modifier = Modifier.padding(20.dp),
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
-        )
+        Row(Modifier.fillMaxWidth().padding(18.dp), verticalAlignment = Alignment.CenterVertically) {
+            Surface(Modifier.size(40.dp), RoundedCornerShape(12.dp), color = MaterialTheme.colorScheme.surface) {
+                Box(contentAlignment = Alignment.Center) {
+                    Icon(Icons.Default.CheckCircle, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                }
+            }
+            Spacer(Modifier.width(12.dp))
+            Column {
+                Text("Tidak ada tugas mendatang", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                Text("Semua tugasmu sudah selesai atau belum memiliki deadline.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
     }
 }
 
-private fun isOverdue(deadline: java.util.Date): Boolean = deadline.before(java.util.Date())
+private fun isOverdue(deadline: java.util.Date): Boolean = deadline.time < System.currentTimeMillis()
 
 private fun relativeDeadline(deadline: java.util.Date): String {
-    val now = System.currentTimeMillis()
-    val diff = deadline.time - now
-    val days = TimeUnit.MILLISECONDS.toDays(kotlin.math.abs(diff))
+    val today = Calendar.getInstance().apply {
+        set(Calendar.HOUR_OF_DAY, 0)
+        set(Calendar.MINUTE, 0)
+        set(Calendar.SECOND, 0)
+        set(Calendar.MILLISECOND, 0)
+    }
+    val target = Calendar.getInstance().apply {
+        time = deadline
+        set(Calendar.HOUR_OF_DAY, 0)
+        set(Calendar.MINUTE, 0)
+        set(Calendar.SECOND, 0)
+        set(Calendar.MILLISECOND, 0)
+    }
+    val days = TimeUnit.MILLISECONDS.toDays(target.timeInMillis - today.timeInMillis)
     return when {
-        diff < 0 -> "Terlambat ${days.coerceAtLeast(1)} hari"
+        days < 0 -> "Terlambat ${-days} hari"
         days == 0L -> "Deadline hari ini"
-        days == 1L -> "Besok"
-        else -> "${days} hari lagi"
+        days == 1L -> "Deadline besok"
+        else -> "Deadline ${days} hari lagi"
     }
 }
