@@ -68,10 +68,11 @@ class CloudDataSyncRepository @Inject constructor(
 
         if (!isNetworkAvailable()) {
             AuthDebugLog.d(
-                "CLOUD_RESTORE skipped: device offline, keeping local Room data"
+                "CLOUD_RESTORE rejected: device offline during authenticated login uid=${AuthDebugLog.uid(uid)}"
             )
-            ReminderScheduler.initialize(context)
-            return false
+            throw IllegalStateException(
+                "Login membutuhkan koneksi internet untuk memuat data akun."
+            )
         }
 
         return try {
