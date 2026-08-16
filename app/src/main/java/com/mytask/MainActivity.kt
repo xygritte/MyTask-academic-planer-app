@@ -54,6 +54,7 @@ import com.mytask.ui.dashboard.DashboardScreen
 import com.mytask.ui.loading.LoadingScreen
 import com.mytask.ui.login.LoginScreen
 import com.mytask.ui.login.OfflineLoginScreen
+import com.mytask.ui.login.isNetworkAvailable
 import com.mytask.ui.login.rememberNetworkAvailable
 import com.mytask.ui.profile.ProfileScreen
 import com.mytask.ui.schedule.ScheduleScreen
@@ -119,7 +120,10 @@ private fun MyTaskApp(
     val currentLocalProfile = localProfile
 
     var networkRefreshKey by remember { mutableStateOf(0) }
+    // App-shell availability: an established authenticated session stays usable offline.
     val isOnline = rememberNetworkAvailable(context, networkRefreshKey)
+    // Real network availability is used only for operations that explicitly require the internet.
+    val networkAvailable = isNetworkAvailable(context)
 
     var sessionProfile by remember { mutableStateOf<UserProfile?>(null) }
     var sessionUid by remember { mutableStateOf<String?>(null) }
@@ -155,7 +159,8 @@ private fun MyTaskApp(
         }
     }
 
-    // Never keep an authenticated workspace while offline. Offline entry is Guest-only.
+    // Authenticated users stay in their local Room workspace when the network is lost.
+    // A brand-new login still requires online cloud restore before entering the workspace.
     LaunchedEffect(currentFirebaseUser?.uid, isOnline) {
         val user = currentFirebaseUser
 
@@ -166,25 +171,14 @@ private fun MyTaskApp(
             return@LaunchedEffect
         }
 
-        if (!isOnline) {
-            accountLoading = false
-            restorePendingState = false
-            syncReady = false
-            sessionProfile = null
-            sessionUid = null
-            shouldShowTemplatePrompt = false
-            runCatching { authRepository.clearLocalSession() }
-            return@LaunchedEffect
-        }
-
         accountLoading = true
-        syncReady = false
         onlineSaveMessage = null
         shouldShowTemplatePrompt = false
         templateError = null
 
         val cachedUid = runCatching { userProfileRepository.uid.first() }.getOrNull()
-        val immediateProfile = currentLocalProfile?.takeIf { cachedUid == user.uid }
+        val cachedProfile = currentLocalProfile?.takeIf { cachedUid == user.uid }
+        val immediateProfile = cachedProfile
             ?: UserProfile(
                 name = user.displayName?.trim()?.takeIf { it.isNotBlank() } ?: "Mahasiswa",
                 program = "Program Studi belum diatur"
@@ -229,6 +223,7 @@ private fun MyTaskApp(
                 runCatching { authRepository.clearLocalSession() }
             }
         } else {
+            // No cloud restore is pending: use the already persisted Room workspace.
             shouldShowTemplatePrompt = false
             syncReady = true
             accountLoading = false
@@ -249,13 +244,13 @@ private fun MyTaskApp(
         Box(modifier = Modifier.fillMaxSize()) {
             MyTaskMainContent(
                 profile = activeProfile,
-                canSaveOnline = currentFirebaseUser != null && isOnline,
-                isSavingOnline = isSavingOnline || !isOnline,
+                canSaveOnline = currentFirebaseUser != null && networkAvailable,
+                isSavingOnline = isSavingOnline || !networkAvailable,
                 onlineSaveMessage = onlineSaveMessage,
                 authRepository = authRepository,
                 onSaveDataOnline = {
                     val user = currentFirebaseUser
-                    if (user != null && isOnline && !isSavingOnline) {
+                    if (user != null && networkAvailable && !isSavingOnline) {
                         scope.launch {
                             isSavingOnline = true
                             onlineSaveMessage = null
@@ -277,7 +272,7 @@ private fun MyTaskApp(
                 },
                 onLogout = {
                     val user = currentFirebaseUser
-                    if (isOnline && !isSavingOnline) {
+                    if (networkAvailable && !isSavingOnline) {
                         scope.launch {
                             isSavingOnline = true
                             onlineSaveMessage = null
@@ -350,7 +345,7 @@ private fun MyTaskApp(
         MyTaskMainContent(
             profile = currentLocalProfile,
             canSaveOnline = false,
-            isSavingOnline = false,
+            isSavingOnline = !networkAvailable,
             onlineSaveMessage = null,
             authRepository = authRepository,
             onSaveDataOnline = {},
@@ -362,7 +357,7 @@ private fun MyTaskApp(
                 shouldShowTemplatePrompt = false
             },
             onLogout = {
-                if (isOnline) {
+                if (networkAvailable) {
                     scope.launch {
                         authRepository.clearLocalSession()
                     }
