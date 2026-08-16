@@ -93,17 +93,11 @@ class FirebaseAuthRepository @Inject constructor(
                 program = cleanProgram
             )
 
-            // Once Firebase authentication succeeds, committing the local
-            // session must survive Compose leaving the LoginScreen.
             withContext(NonCancellable) {
-                userProfileRepository.saveProfile(
+                userProfileRepository.saveAuthenticatedSession(
                     uid = user.uid,
                     name = profile.name,
                     program = profile.program
-                )
-                userProfileRepository.markCloudRestorePending()
-                AuthDebugLog.d(
-                    "REGISTER local session committed: uid=${AuthDebugLog.uid(user.uid)} restorePending=true"
                 )
             }
 
@@ -160,17 +154,11 @@ class FirebaseAuthRepository @Inject constructor(
                 program = "Program Studi belum diatur"
             )
 
-            // This write must complete even if LoginScreen is removed after
-            // FirebaseAuth emits signedIn=true.
             withContext(NonCancellable) {
-                userProfileRepository.saveProfile(
+                userProfileRepository.saveAuthenticatedSession(
                     uid = user.uid,
                     name = immediateProfile.name,
                     program = immediateProfile.program
-                )
-                userProfileRepository.markCloudRestorePending()
-                AuthDebugLog.d(
-                    "EMAIL_LOGIN local session committed: uid=${AuthDebugLog.uid(user.uid)} restorePending=true"
                 )
             }
 
@@ -269,17 +257,11 @@ class FirebaseAuthRepository @Inject constructor(
                 program = "Program Studi belum diatur"
             )
 
-            // Critical session commit. Use NonCancellable because AuthState
-            // may remove LoginScreen from Compose immediately after sign-in.
             withContext(NonCancellable) {
-                userProfileRepository.saveProfile(
+                userProfileRepository.saveAuthenticatedSession(
                     uid = user.uid,
                     name = immediateProfile.name,
                     program = immediateProfile.program
-                )
-                userProfileRepository.markCloudRestorePending()
-                AuthDebugLog.d(
-                    "GOOGLE_LOGIN local session committed: uid=${AuthDebugLog.uid(user.uid)} restorePending=true"
                 )
             }
 
