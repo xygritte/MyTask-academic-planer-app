@@ -58,8 +58,6 @@ import com.mytask.ui.theme.MyTaskTheme
 import dagger.hilt.android.AndroidEntryPoint
 import javax.inject.Inject
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.collectLatest
-import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
@@ -136,8 +134,12 @@ private fun MyTaskApp(
         initial = null
     )
 
-    val currentLocalProfile = localProfile
+    val restorePending by userProfileRepository.restorePending.collectAsState(
+        initial = false
+    )
+
     val currentFirebaseUser = firebaseUser
+    val currentLocalProfile = localProfile
 
     var sessionProfile by remember {
         mutableStateOf<UserProfile?>(null)
@@ -167,6 +169,14 @@ private fun MyTaskApp(
         mutableStateOf<String?>(null)
     }
 
+    var isSavingOnline by remember {
+        mutableStateOf(false)
+    }
+
+    var onlineSaveMessage by remember {
+        mutableStateOf<String?>(null)
+    }
+
     val scope = rememberCoroutineScope()
 
     LaunchedEffect(Unit) {
@@ -174,81 +184,78 @@ private fun MyTaskApp(
         minimumLoading = false
     }
 
-    // Recover the locally persisted session first. This prevents the UI from
-    // flashing back to Login while Firebase/AuthState or DataStore is settling.
+    // Guest/local session is restored entirely from DataStore + Room.
     LaunchedEffect(currentLocalProfile) {
         val profile = currentLocalProfile
         val uid = runCatching {
             userProfileRepository.uid.first()
         }.getOrNull()
 
-        if (profile != null && uid != null) {
+        if (profile != null && uid == "guest") {
             sessionProfile = profile
-            sessionUid = uid
+            sessionUid = "guest"
+            syncReady = true
         }
     }
 
-    LaunchedEffect(currentFirebaseUser?.uid) {
+    // Firebase authentication itself is persistent across normal app restarts.
+    // We only restore cloud data when the explicit-login flow marked it pending.
+    LaunchedEffect(currentFirebaseUser?.uid, restorePending) {
         val user = currentFirebaseUser
 
-        accountLoading = user != null
-        syncReady = false
-
-        if (user != null) {
-            val cachedProfile = currentLocalProfile
-            val cachedUid = runCatching {
-                userProfileRepository.uid.first()
-            }.getOrNull()
-
-            val immediateProfile =
-                cachedProfile?.takeIf { cachedUid == user.uid }
-                    ?: UserProfile(
-                        name = user.displayName
-                            ?.trim()
-                            ?.takeIf { it.isNotBlank() }
-                            ?: "Mahasiswa",
-                        program = "Program Studi belum diatur"
-                    )
-
-            // Latch the authenticated session immediately. Do not clear this
-            // merely because AuthState emits a transient null during startup.
-            sessionProfile = immediateProfile
-            sessionUid = user.uid
+        if (user == null) {
             accountLoading = false
-
-            launch {
-                authRepository.reloadProfile()
-                    .onSuccess { refreshedProfile ->
-                        sessionProfile = refreshedProfile
-                    }
-            }
-
-            launch {
+            syncReady = currentLocalProfile?.let {
                 runCatching {
-                    cloudDataSyncRepository.syncOnLogin(user.uid)
-                }
-                syncReady = true
-            }
-        }
-    }
-
-    LaunchedEffect(currentFirebaseUser?.uid, syncReady) {
-        val user = currentFirebaseUser
-
-        if (user == null || !syncReady) {
+                    userProfileRepository.uid.first()
+                }.getOrNull() == "guest"
+            } == true
             return@LaunchedEffect
         }
 
-        cloudDataSyncRepository.databaseJson
-            .debounce(1200)
-            .collectLatest { json ->
+        accountLoading = true
+        syncReady = false
+        onlineSaveMessage = null
+
+        val cachedUid = runCatching {
+            userProfileRepository.uid.first()
+        }.getOrNull()
+
+        val immediateProfile =
+            currentLocalProfile?.takeIf { cachedUid == user.uid }
+                ?: UserProfile(
+                    name = user.displayName
+                        ?.trim()
+                        ?.takeIf { it.isNotBlank() }
+                        ?: "Mahasiswa",
+                    program = "Program Studi belum diatur"
+                )
+
+        sessionProfile = immediateProfile
+        sessionUid = user.uid
+        accountLoading = false
+
+        if (restorePending) {
+            scope.launch {
                 runCatching {
-                    cloudDataSyncRepository.uploadJson(
-                        uid = user.uid,
-                        json = json
-                    )
+                    cloudDataSyncRepository.syncOnLogin(user.uid)
                 }
+                    .onSuccess {
+                        userProfileRepository
+                            .clearCloudRestorePending()
+                    }
+                    .onFailure { error ->
+                        templateError =
+                            error.message
+                                ?: "Data online belum dapat dimuat."
+                    }
+
+                syncReady = true
             }
+        } else {
+            // Normal application reopen: remain fully local/offline.
+            syncReady = true
+        }
     }
 
     if (minimumLoading) {
@@ -258,8 +265,9 @@ private fun MyTaskApp(
 
     val activeProfile = sessionProfile
 
-    if (activeProfile != null) {
-        val templateUid = sessionUid ?: currentFirebaseUser?.uid ?: "guest"
+    if (activeProfile != null && syncReady) {
+        val templateUid =
+            sessionUid ?: currentFirebaseUser?.uid ?: "guest"
 
         val promptFlow = remember(templateUid) {
             templatePreferenceRepository.promptShown(templateUid)
@@ -269,18 +277,55 @@ private fun MyTaskApp(
             initial = false
         )
 
-        Box(modifier = Modifier.fillMaxSize()) {
+        Box(
+            modifier = Modifier.fillMaxSize()
+        ) {
             MyTaskMainContent(
                 profile = activeProfile,
+                canSaveOnline = currentFirebaseUser != null,
+                isSavingOnline = isSavingOnline,
+                onlineSaveMessage = onlineSaveMessage,
                 authRepository = authRepository,
+                onSaveDataOnline = {
+                    val user = currentFirebaseUser
+
+                    if (user == null || isSavingOnline) {
+                        return@MyTaskMainContent
+                    }
+
+                    scope.launch {
+                        isSavingOnline = true
+                        onlineSaveMessage = null
+
+                        runCatching {
+                            cloudDataSyncRepository
+                                .uploadCurrentData(user.uid)
+                        }
+                            .onSuccess {
+                                onlineSaveMessage =
+                                    "Data berhasil disimpan ke online."
+                            }
+                            .onFailure { error ->
+                                onlineSaveMessage =
+                                    error.message
+                                        ?: "Gagal menyimpan data ke online."
+                            }
+
+                        isSavingOnline = false
+                    }
+                },
                 onLoggedOut = {
                     sessionProfile = null
                     sessionUid = null
+                    syncReady = false
+                    onlineSaveMessage = null
                 }
             )
 
-            // Template is only shown after a session has been established.
-            if (!templatePromptShown && !accountLoading) {
+            if (
+                !templatePromptShown &&
+                !accountLoading
+            ) {
                 AcademicTemplateDialog(
                     isApplying = isApplyingTemplate,
                     errorMessage = templateError,
@@ -299,22 +344,19 @@ private fun MyTaskApp(
                                 templateError = null
 
                                 runCatching {
+                                    // Template stays local. It is uploaded only
+                                    // when the user explicitly taps Save Online.
                                     templateDataImporter.importTemplate()
-
-                                    val user = currentFirebaseUser
-                                    if (user != null) {
-                                        cloudDataSyncRepository.uploadCurrentData(
-                                            user.uid
-                                        )
-                                    }
-                                }.onSuccess {
-                                    templatePreferenceRepository
-                                        .markPromptShown(templateUid)
-                                }.onFailure { error ->
-                                    templateError =
-                                        error.message
-                                            ?: "Template gagal diterapkan."
                                 }
+                                    .onSuccess {
+                                        templatePreferenceRepository
+                                            .markPromptShown(templateUid)
+                                    }
+                                    .onFailure { error ->
+                                        templateError =
+                                            error.message
+                                                ?: "Template gagal diterapkan."
+                                    }
 
                                 isApplyingTemplate = false
                             }
@@ -323,10 +365,38 @@ private fun MyTaskApp(
                 )
             }
         }
+
         return
     }
 
-    // Only show Login when there is genuinely no persisted session/profile.
+    // A Firebase session may still be resolving during process startup.
+    if (currentFirebaseUser != null) {
+        LoadingScreen()
+        return
+    }
+
+    if (currentLocalProfile != null) {
+        // Guest/local profile is the only non-Firebase session.
+        sessionProfile = currentLocalProfile
+        sessionUid = "guest"
+        syncReady = true
+
+        MyTaskMainContent(
+            profile = currentLocalProfile,
+            canSaveOnline = false,
+            isSavingOnline = false,
+            onlineSaveMessage = null,
+            authRepository = authRepository,
+            onSaveDataOnline = {},
+            onLoggedOut = {
+                sessionProfile = null
+                sessionUid = null
+                syncReady = false
+            }
+        )
+        return
+    }
+
     LoginScreen(
         authRepository = authRepository
     )
@@ -335,7 +405,11 @@ private fun MyTaskApp(
 @Composable
 private fun MyTaskMainContent(
     profile: UserProfile,
+    canSaveOnline: Boolean,
+    isSavingOnline: Boolean,
+    onlineSaveMessage: String?,
     authRepository: FirebaseAuthRepository,
+    onSaveDataOnline: () -> Unit,
     onLoggedOut: () -> Unit
 ) {
     val navController = rememberNavController()
@@ -363,49 +437,96 @@ private fun MyTaskMainContent(
                     NavigationBarItem(
                         selected = currentPage == 0,
                         onClick = {
-                            scope.launch { pagerState.animateScrollToPage(0) }
+                            scope.launch {
+                                pagerState.animateScrollToPage(0)
+                            }
                         },
-                        icon = { Icon(Icons.Default.Dashboard, "Dashboard") },
+                        icon = {
+                            Icon(
+                                Icons.Default.Dashboard,
+                                "Dashboard"
+                            )
+                        },
                         alwaysShowLabel = false
                     )
+
                     NavigationBarItem(
                         selected = currentPage == 1,
                         onClick = {
-                            scope.launch { pagerState.animateScrollToPage(1) }
+                            scope.launch {
+                                pagerState.animateScrollToPage(1)
+                            }
                         },
-                        icon = { Icon(Icons.Default.Task, "Tugas") },
+                        icon = {
+                            Icon(
+                                Icons.Default.Task,
+                                "Tugas"
+                            )
+                        },
                         alwaysShowLabel = false
                     )
+
                     NavigationBarItem(
                         selected = currentPage == 2,
                         onClick = {
-                            scope.launch { pagerState.animateScrollToPage(2) }
+                            scope.launch {
+                                pagerState.animateScrollToPage(2)
+                            }
                         },
-                        icon = { Icon(Icons.Default.Schedule, "Jadwal") },
+                        icon = {
+                            Icon(
+                                Icons.Default.Schedule,
+                                "Jadwal"
+                            )
+                        },
                         alwaysShowLabel = false
                     )
+
                     NavigationBarItem(
                         selected = currentPage == 3,
                         onClick = {
-                            scope.launch { pagerState.animateScrollToPage(3) }
+                            scope.launch {
+                                pagerState.animateScrollToPage(3)
+                            }
                         },
-                        icon = { Icon(Icons.Default.CalendarMonth, "Kalender") },
+                        icon = {
+                            Icon(
+                                Icons.Default.CalendarMonth,
+                                "Kalender"
+                            )
+                        },
                         alwaysShowLabel = false
                     )
+
                     NavigationBarItem(
                         selected = currentPage == 4,
                         onClick = {
-                            scope.launch { pagerState.animateScrollToPage(4) }
+                            scope.launch {
+                                pagerState.animateScrollToPage(4)
+                            }
                         },
-                        icon = { Icon(Icons.Default.MenuBook, "Mata Kuliah") },
+                        icon = {
+                            Icon(
+                                Icons.Default.MenuBook,
+                                "Mata Kuliah"
+                            )
+                        },
                         alwaysShowLabel = false
                     )
+
                     NavigationBarItem(
                         selected = currentPage == 5,
                         onClick = {
-                            scope.launch { pagerState.animateScrollToPage(5) }
+                            scope.launch {
+                                pagerState.animateScrollToPage(5)
+                            }
                         },
-                        icon = { Icon(Icons.Default.Person, "Profile") },
+                        icon = {
+                            Icon(
+                                Icons.Default.Person,
+                                "Profile"
+                            )
+                        },
                         alwaysShowLabel = false
                     )
                 }
@@ -433,25 +554,37 @@ private fun MyTaskMainContent(
                     when (page) {
                         0 -> DashboardScreen(
                             onCoursesClick = {
-                                scope.launch { pagerState.animateScrollToPage(4) }
+                                scope.launch {
+                                    pagerState.animateScrollToPage(4)
+                                }
                             },
                             onTasksClick = {
-                                scope.launch { pagerState.animateScrollToPage(1) }
+                                scope.launch {
+                                    pagerState.animateScrollToPage(1)
+                                }
                             },
                             onScheduleClick = {
-                                scope.launch { pagerState.animateScrollToPage(2) }
+                                scope.launch {
+                                    pagerState.animateScrollToPage(2)
+                                }
                             },
                             onCalendarClick = {
-                                scope.launch { pagerState.animateScrollToPage(3) }
+                                scope.launch {
+                                    pagerState.animateScrollToPage(3)
+                                }
                             }
                         )
 
                         1 -> TaskListScreen(
                             onAddTask = {
-                                navController.navigate("add_task?taskId=-1")
+                                navController.navigate(
+                                    "add_task?taskId=-1"
+                                )
                             },
                             onEditTask = { id ->
-                                navController.navigate("add_task?taskId=$id")
+                                navController.navigate(
+                                    "add_task?taskId=$id"
+                                )
                             }
                         )
 
@@ -461,7 +594,9 @@ private fun MyTaskMainContent(
                             onBack = {
                                 scope.launch {
                                     if (currentPage > 0) {
-                                        pagerState.animateScrollToPage(currentPage - 1)
+                                        pagerState.animateScrollToPage(
+                                            currentPage - 1
+                                        )
                                     }
                                 }
                             }
@@ -469,29 +604,43 @@ private fun MyTaskMainContent(
 
                         4 -> CourseListScreen(
                             onAddCourse = {
-                                navController.navigate("add_course?courseId=-1")
+                                navController.navigate(
+                                    "add_course?courseId=-1"
+                                )
                             },
                             onEditCourse = { id ->
-                                navController.navigate("add_course?courseId=$id")
+                                navController.navigate(
+                                    "add_course?courseId=$id"
+                                )
                             }
                         )
 
                         5 -> ProfileScreen(
                             profile = profile,
+                            canSaveOnline = canSaveOnline,
+                            isSavingOnline = isSavingOnline,
+                            onlineSaveMessage = onlineSaveMessage,
                             onBack = {
                                 scope.launch {
                                     if (currentPage > 0) {
-                                        pagerState.animateScrollToPage(currentPage - 1)
+                                        pagerState.animateScrollToPage(
+                                            currentPage - 1
+                                        )
                                     }
                                 }
                             },
                             onNotificationSettings = {
-                                navController.navigate(Screen.NotificationSettings.route)
+                                navController.navigate(
+                                    Screen.NotificationSettings.route
+                                )
                             },
                             onBackupData = {
-                                navController.navigate(Screen.Backup.route)
+                                navController.navigate(
+                                    Screen.Backup.route
+                                )
                             },
                             onEditProfile = {},
+                            onSaveDataOnline = onSaveDataOnline,
                             onLogout = {
                                 scope.launch {
                                     authRepository.clearLocalSession()
