@@ -6,6 +6,7 @@ import androidx.credentials.GetCredentialRequest
 import com.google.android.libraries.identity.googleid.GetGoogleIdOption
 import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential
 import com.google.firebase.auth.FirebaseAuth
+import com.google.firebase.auth.FirebaseAuthUserCollisionException
 import com.google.firebase.auth.FirebaseUser
 import com.google.firebase.auth.GoogleAuthProvider
 import com.google.firebase.auth.UserProfileChangeRequest
@@ -116,6 +117,17 @@ class FirebaseAuthRepository @Inject constructor(
                     error
                 )
                 throw error
+            }
+
+            if (error is FirebaseAuthUserCollisionException ||
+                error.message?.contains("already in use", ignoreCase = true) == true
+            ) {
+                AuthDebugLog.d("REGISTER rejected: email already registered")
+                auth.signOut()
+                userProfileRepository.clearProfile()
+                return Result.failure(
+                    IllegalStateException("EMAIL_ALREADY_REGISTERED")
+                )
             }
 
             AuthDebugLog.e(
