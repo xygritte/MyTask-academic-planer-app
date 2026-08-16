@@ -18,32 +18,55 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowForwardIos
+import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Cloud
 import androidx.compose.material.icons.filled.CloudUpload
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Logout
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Person
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.google.firebase.auth.FirebaseAuth
+import com.google.firebase.auth.UserProfileChangeRequest
+import com.google.firebase.firestore.FirebaseFirestore
+import com.google.firebase.firestore.SetOptions
 import com.mytask.R
 import com.mytask.data.repository.UserProfile
+import com.mytask.data.repository.UserProfileRepository
+import com.mytask.debug.AuthDebugLog
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.tasks.await
+import kotlinx.coroutines.withContext
 
 @Composable
 fun ProfileScreen(
@@ -58,6 +81,18 @@ fun ProfileScreen(
     onSaveDataOnline: () -> Unit = {},
     onLogout: () -> Unit = {}
 ) {
+    val context = LocalContext.current.applicationContext
+    val userProfileRepository = remember(context) {
+        UserProfileRepository(context)
+    }
+    val storedProfile by userProfileRepository.profile.collectAsState(initial = profile)
+    val displayedProfile = storedProfile ?: profile
+
+    var showEditDialog by remember { mutableStateOf(false) }
+    var isUpdatingProfile by remember { mutableStateOf(false) }
+    var editError by remember { mutableStateOf<String?>(null) }
+    var editSuccess by remember { mutableStateOf<String?>(null) }
+    val scope = rememberCoroutineScope()
 
     Scaffold(
         topBar = {
@@ -71,7 +106,6 @@ fun ProfileScreen(
             )
         }
     ) { paddingValues ->
-
         Column(
             modifier = Modifier
                 .fillMaxSize()
@@ -79,7 +113,6 @@ fun ProfileScreen(
                 .padding(horizontal = 16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-
             Spacer(Modifier.height(4.dp))
 
             Card(
@@ -93,14 +126,12 @@ fun ProfileScreen(
                     MaterialTheme.colorScheme.outline.copy(alpha = 0.45f)
                 )
             ) {
-
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(20.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-
                     Surface(
                         modifier = Modifier.size(72.dp),
                         shape = CircleShape,
@@ -122,9 +153,8 @@ fun ProfileScreen(
                     Column(
                         modifier = Modifier.weight(1f)
                     ) {
-
                         Text(
-                            text = profile.name,
+                            text = displayedProfile.name,
                             style = MaterialTheme.typography.headlineSmall,
                             fontWeight = FontWeight.Bold
                         )
@@ -132,7 +162,7 @@ fun ProfileScreen(
                         Spacer(Modifier.height(2.dp))
 
                         Text(
-                            text = profile.program,
+                            text = displayedProfile.program,
                             style = MaterialTheme.typography.bodyLarge,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -156,7 +186,11 @@ fun ProfileScreen(
                     }
 
                     IconButton(
-                        onClick = onEditProfile
+                        onClick = {
+                            editError = null
+                            editSuccess = null
+                            showEditDialog = true
+                        }
                     ) {
                         Icon(
                             imageVector = Icons.Default.Edit,
@@ -164,6 +198,21 @@ fun ProfileScreen(
                             tint = MaterialTheme.colorScheme.primary
                         )
                     }
+                }
+            }
+
+            editSuccess?.let { message ->
+                Surface(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp),
+                    color = MaterialTheme.colorScheme.primaryContainer
+                ) {
+                    Text(
+                        text = message,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onPrimaryContainer,
+                        modifier = Modifier.padding(12.dp)
+                    )
                 }
             }
 
@@ -220,7 +269,7 @@ fun ProfileScreen(
                 description = "Keluar dari akun MyTask di perangkat ini.",
                 onClick = onLogout,
                 destructive = true,
-                enabled = !isSavingOnline
+                enabled = !isSavingOnline && !isUpdatingProfile
             )
 
             Spacer(Modifier.height(4.dp))
@@ -241,6 +290,179 @@ fun ProfileScreen(
             )
         }
     }
+
+    if (showEditDialog) {
+        EditProfileDialog(
+            initialName = displayedProfile.name,
+            initialProgram = displayedProfile.program,
+            isSaving = isUpdatingProfile,
+            errorMessage = editError,
+            onDismiss = {
+                if (!isUpdatingProfile) {
+                    showEditDialog = false
+                }
+            },
+            onSave = { name, program ->
+                scope.launch {
+                    isUpdatingProfile = true
+                    editError = null
+                    editSuccess = null
+
+                    try {
+                        val cleanName = name.trim()
+                        val cleanProgram = program.trim()
+
+                        if (cleanName.isBlank() || cleanProgram.isBlank()) {
+                            error("Nama dan program studi wajib diisi.")
+                        }
+
+                        val firebaseUser = FirebaseAuth.getInstance().currentUser
+
+                        if (firebaseUser != null) {
+                            firebaseUser.updateProfile(
+                                UserProfileChangeRequest.Builder()
+                                    .setDisplayName(cleanName)
+                                    .build()
+                            ).await()
+
+                            FirebaseFirestore.getInstance()
+                                .collection("users")
+                                .document(firebaseUser.uid)
+                                .set(
+                                    mapOf(
+                                        "uid" to firebaseUser.uid,
+                                        "name" to cleanName,
+                                        "program" to cleanProgram,
+                                        "email" to firebaseUser.email,
+                                        "updatedAt" to System.currentTimeMillis()
+                                    ),
+                                    SetOptions.merge()
+                                )
+                                .await()
+
+                            withContext(NonCancellable) {
+                                userProfileRepository.saveProfile(
+                                    uid = firebaseUser.uid,
+                                    name = cleanName,
+                                    program = cleanProgram
+                                )
+                            }
+
+                            AuthDebugLog.d(
+                                "PROFILE_UPDATE online success: uid=${AuthDebugLog.uid(firebaseUser.uid)}"
+                            )
+                        } else {
+                            withContext(NonCancellable) {
+                                userProfileRepository.saveGuestProfile(
+                                    name = cleanName,
+                                    program = cleanProgram
+                                )
+                            }
+                            AuthDebugLog.d("PROFILE_UPDATE guest local success")
+                        }
+
+                        editSuccess = "Profil berhasil diperbarui."
+                        showEditDialog = false
+                    } catch (error: Throwable) {
+                        AuthDebugLog.e("PROFILE_UPDATE failed", error)
+                        editError = error.message
+                            ?: "Profil gagal diperbarui."
+                    } finally {
+                        isUpdatingProfile = false
+                    }
+                }
+            }
+        )
+    }
+}
+
+@Composable
+private fun EditProfileDialog(
+    initialName: String,
+    initialProgram: String,
+    isSaving: Boolean,
+    errorMessage: String?,
+    onDismiss: () -> Unit,
+    onSave: (String, String) -> Unit
+) {
+    var name by remember(initialName) { mutableStateOf(initialName) }
+    var program by remember(initialProgram) { mutableStateOf(initialProgram) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        icon = {
+            Icon(
+                imageVector = Icons.Default.Edit,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.primary
+            )
+        },
+        title = {
+            Text(
+                text = "Edit profil",
+                fontWeight = FontWeight.Bold
+            )
+        },
+        text = {
+            Column(
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                OutlinedTextField(
+                    value = name,
+                    onValueChange = { name = it },
+                    modifier = Modifier.fillMaxWidth(),
+                    label = { Text("Nama mahasiswa") },
+                    singleLine = true,
+                    enabled = !isSaving
+                )
+
+                OutlinedTextField(
+                    value = program,
+                    onValueChange = { program = it },
+                    modifier = Modifier.fillMaxWidth(),
+                    label = { Text("Program studi") },
+                    singleLine = true,
+                    enabled = !isSaving
+                )
+
+                if (!errorMessage.isNullOrBlank()) {
+                    Text(
+                        text = errorMessage,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.error
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = {
+                    onSave(name, program)
+                },
+                enabled = !isSaving &&
+                    name.trim().isNotBlank() &&
+                    program.trim().isNotBlank()
+            ) {
+                if (isSaving) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(18.dp),
+                        strokeWidth = 2.dp,
+                        color = MaterialTheme.colorScheme.onPrimary
+                    )
+                    Spacer(Modifier.size(8.dp))
+                }
+                Text(if (isSaving) "Menyimpan..." else "Simpan")
+            }
+        },
+        dismissButton = {
+            OutlinedButton(
+                onClick = onDismiss,
+                enabled = !isSaving
+            ) {
+                Text("Batal")
+            }
+        }
+    )
 }
 
 @Composable
@@ -252,7 +474,6 @@ private fun ProfileMenuCard(
     destructive: Boolean = false,
     enabled: Boolean = true
 ) {
-
     val accent = if (destructive) {
         MaterialTheme.colorScheme.error
     } else {
@@ -289,14 +510,12 @@ private fun ProfileMenuCard(
             MaterialTheme.colorScheme.outline.copy(alpha = 0.45f)
         )
     ) {
-
         Row(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(16.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-
             Surface(
                 modifier = Modifier.size(44.dp),
                 shape = RoundedCornerShape(12.dp),
