@@ -19,90 +19,46 @@ import androidx.compose.ui.unit.dp
 import com.mytask.R
 
 @Composable
-fun LoadingScreen() {
-
+fun LoadingScreen(
+    message: String = "Memuat..."
+) {
     Column(
-
-        modifier =
-            Modifier.fillMaxSize(),
-
-        horizontalAlignment =
-            Alignment.CenterHorizontally,
-
-        verticalArrangement =
-            Arrangement.Center
+        modifier = Modifier.fillMaxSize(),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center
     ) {
-
         Image(
-
-            painter =
-                painterResource(
-                    id =
-                        R.mipmap.mytask_background
-                ),
-
-            contentDescription =
-                "MyTask",
-
-            modifier =
-                Modifier.size(110.dp)
+            painter = painterResource(id = R.mipmap.mytask_background),
+            contentDescription = "MyTask",
+            modifier = Modifier.size(110.dp)
         )
 
-        Spacer(
-            modifier =
-                Modifier.height(16.dp)
+        Spacer(Modifier.height(16.dp))
+
+        Text(
+            text = "MyTask",
+            style = MaterialTheme.typography.headlineMedium,
+            fontWeight = FontWeight.Bold
         )
 
         Text(
-
-            text =
-                "MyTask",
-
-            style =
-                MaterialTheme
-                    .typography
-                    .headlineMedium,
-
-            fontWeight =
-                FontWeight.Bold
+            text = "Academic Planner",
+            style = MaterialTheme.typography.bodyLarge,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
         )
 
-        Text(
-
-            text =
-                "Academic Planner",
-
-            style =
-                MaterialTheme
-                    .typography
-                    .bodyLarge
-        )
-
-        Spacer(
-            modifier =
-                Modifier.height(24.dp)
-        )
+        Spacer(Modifier.height(24.dp))
 
         CircularProgressIndicator(
-
-            modifier =
-                Modifier.size(32.dp)
+            modifier = Modifier.size(32.dp)
         )
 
-        Spacer(
-            modifier =
-                Modifier.height(12.dp)
-        )
+        Spacer(Modifier.height(12.dp))
 
         Text(
-
-            text =
-                "Memuat...",
-
-            style =
-                MaterialTheme
-                    .typography
-                    .bodyMedium
+            text = message,
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
         )
     }
 }
