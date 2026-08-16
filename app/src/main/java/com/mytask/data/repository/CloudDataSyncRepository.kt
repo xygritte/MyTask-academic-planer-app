@@ -9,6 +9,7 @@ import com.mytask.data.local.MyTaskDatabase
 import com.mytask.data.local.entity.CourseEntity
 import com.mytask.data.local.entity.ScheduleEntity
 import com.mytask.data.local.entity.TaskEntity
+import com.mytask.debug.AuthDebugLog
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
@@ -49,46 +50,59 @@ class CloudDataSyncRepository @Inject constructor(
             )
         }
 
-    /**
-     * Restores the authenticated user's last explicitly uploaded workspace.
-     *
-     * This method is intentionally one-way: login may DOWNLOAD data, but it
-     * never uploads local data. Uploading is an explicit user action from the
-     * Profile screen.
-     */
     suspend fun syncOnLogin(uid: String): Boolean {
         require(uid.isNotBlank())
+
+        AuthDebugLog.d(
+            "CLOUD_RESTORE start: uid=${AuthDebugLog.uid(uid)}"
+        )
 
         clearLocalAcademicData()
         NotificationHelper.cancelAllAppNotifications(context)
         ReminderScheduler.cancel(context)
+        AuthDebugLog.d("CLOUD_RESTORE local workspace cleared")
 
-        val snapshot =
-            document(uid)
-                .get()
-                .await()
+        return try {
+            val snapshot =
+                document(uid)
+                    .get()
+                    .await()
 
-        val cloudJson =
-            snapshot
-                .getString("dataJson")
-                ?.takeIf { it.isNotBlank() }
+            val cloudJson =
+                snapshot
+                    .getString("dataJson")
+                    ?.takeIf { it.isNotBlank() }
 
-        if (cloudJson == null) {
+            if (cloudJson == null) {
+                AuthDebugLog.d(
+                    "CLOUD_RESTORE no cloud data: uid=${AuthDebugLog.uid(uid)}"
+                )
+                ReminderScheduler.initialize(context)
+                false
+            } else {
+                replaceLocalDatabase(cloudJson)
+                saveLocalJson(uid, cloudJson)
+                AuthDebugLog.d(
+                    "CLOUD_RESTORE success: uid=${AuthDebugLog.uid(uid)} jsonLength=${cloudJson.length}"
+                )
+                ReminderScheduler.initialize(context)
+                true
+            }
+        } catch (error: Throwable) {
+            AuthDebugLog.e(
+                "CLOUD_RESTORE failed: uid=${AuthDebugLog.uid(uid)} ${error::class.simpleName}: ${error.message}",
+                error
+            )
             ReminderScheduler.initialize(context)
-            return false
+            throw error
         }
-
-        replaceLocalDatabase(cloudJson)
-        saveLocalJson(uid, cloudJson)
-        ReminderScheduler.initialize(context)
-        return true
     }
 
-    /**
-     * Explicit upload action used by Profile -> Simpan data ke online.
-     */
     suspend fun uploadCurrentData(uid: String) {
         require(uid.isNotBlank())
+        AuthDebugLog.d(
+            "CLOUD_UPLOAD start: uid=${AuthDebugLog.uid(uid)}"
+        )
 
         val json = databaseJson.first()
         uploadJson(uid, json)
@@ -108,6 +122,9 @@ class CloudDataSyncRepository @Inject constructor(
             .await()
 
         saveLocalJson(uid, json)
+        AuthDebugLog.d(
+            "CLOUD_UPLOAD success: uid=${AuthDebugLog.uid(uid)} jsonLength=${json.length}"
+        )
     }
 
     suspend fun exportLocalJson(uid: String): File {
@@ -122,12 +139,9 @@ class CloudDataSyncRepository @Inject constructor(
             database.taskDao().deleteAll()
             database.courseDao().deleteAll()
         }
+        AuthDebugLog.d("ROOM clearLocalAcademicData completed")
     }
 
-    /**
-     * Clears all device-only academic state for the active session.
-     * Cloud data is never deleted here.
-     */
     suspend fun clearLocalSessionData() {
         clearLocalAcademicData()
 
@@ -148,6 +162,8 @@ class CloudDataSyncRepository @Inject constructor(
                     file.delete()
                 }
             }
+
+        AuthDebugLog.d("LOCAL_SESSION clear completed")
     }
 
     private suspend fun replaceLocalDatabase(json: String) {
@@ -185,6 +201,10 @@ class CloudDataSyncRepository @Inject constructor(
                 database.scheduleDao().insertAll(schedules)
             }
         }
+
+        AuthDebugLog.d(
+            "ROOM restore completed: courses=${courses.size} tasks=${tasks.size} schedules=${schedules.size}"
+        )
     }
 
     private fun buildJson(
