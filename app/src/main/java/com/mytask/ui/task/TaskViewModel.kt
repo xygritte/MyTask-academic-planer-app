@@ -62,11 +62,8 @@ class TaskViewModel @Inject constructor(
                 deadline = deadline
             )
 
-            repository.addTask(task)
-            val savedTask = tasks.firstOrNull { it.title == task.title && it.deadline == task.deadline }
-            savedTask?.let {
-                ReminderScheduler.scheduleTaskDeadline(appContext, it.id, it.deadline)
-            }
+            val taskId = repository.addTask(task)
+            ReminderScheduler.scheduleTaskDeadline(appContext, taskId, deadline)
             ReminderScheduler.syncToday(appContext)
             onSaved()
         }
