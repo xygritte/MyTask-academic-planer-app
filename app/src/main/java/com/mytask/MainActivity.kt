@@ -167,7 +167,17 @@ private fun MyTaskApp(
         if (user == null) {
             accountLoading = false
             restorePendingState = false
-            if (sessionUid == "guest") syncReady = true
+
+            if (sessionUid == "guest") {
+                syncReady = true
+            } else {
+                sessionProfile = null
+                sessionUid = null
+                syncReady = false
+                shouldShowTemplatePrompt = false
+                templateError = null
+                onlineSaveMessage = null
+            }
             return@LaunchedEffect
         }
 
