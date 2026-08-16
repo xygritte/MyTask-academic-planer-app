@@ -16,23 +16,18 @@ import java.util.concurrent.TimeUnit
 class DailyReminderWorker(
     appContext: Context,
     workerParams: WorkerParameters
-) : CoroutineWorker(
-    appContext,
-    workerParams
-) {
+) : CoroutineWorker(appContext, workerParams) {
 
     override suspend fun doWork(): Result {
         AppDebugLog.d("NOTIFICATION", "worker start id=$id")
 
-        val database =
-            Room.databaseBuilder(
-                applicationContext,
-                MyTaskDatabase::class.java,
-                "mytask_db"
-            ).build()
+        val database = Room.databaseBuilder(
+            applicationContext,
+            MyTaskDatabase::class.java,
+            "mytask_db"
+        ).build()
 
-        val settingsRepository =
-            SettingsRepository(applicationContext)
+        val settingsRepository = SettingsRepository(applicationContext)
 
         return try {
             NotificationHelper.createChannels(applicationContext)
@@ -53,7 +48,8 @@ class DailyReminderWorker(
                 AppDebugLog.d("NOTIFICATION", "active task notification disabled")
             }
 
-            checkDeadlineTasks(tasks = tasks, reminderDays = reminderDays)
+            checkDeadlineTasks(tasks, reminderDays)
+            ReminderScheduler.rescheduleAllTaskDeadlines(applicationContext, tasks)
             checkTodaySchedules(database)
             ReminderScheduler.scheduleNextMidnight(applicationContext)
 
@@ -70,11 +66,7 @@ class DailyReminderWorker(
 
     private fun checkActiveTasks(tasks: List<TaskEntity>) {
         val activeTasks = tasks.filter { !it.isCompleted }
-
-        AppDebugLog.d(
-            "NOTIFICATION",
-            "active task evaluation count=${activeTasks.size}"
-        )
+        AppDebugLog.d("NOTIFICATION", "active task evaluation count=${activeTasks.size}")
 
         if (activeTasks.isEmpty()) {
             NotificationHelper.cancelActiveTasksNotification(applicationContext)
@@ -82,233 +74,113 @@ class DailyReminderWorker(
         }
 
         val today = Calendar.getInstance()
-        val visibleTasks = activeTasks
-            .sortedBy { it.deadline ?: Date(Long.MAX_VALUE) }
-            .take(4)
-
+        val visibleTasks = activeTasks.sortedBy { it.deadline ?: Date(Long.MAX_VALUE) }.take(4)
         val message = buildString {
             visibleTasks.forEachIndexed { index, task ->
-                append("• ")
-                append(task.title)
-                task.deadline?.let { deadline ->
-                    append(" — ")
-                    append(getDeadlineText(today, deadline))
-                }
+                append("• ").append(task.title)
+                task.deadline?.let { append(" — ").append(getDeadlineText(today, it)) }
                 if (index < visibleTasks.lastIndex) append("\n")
             }
-
-            if (activeTasks.size > visibleTasks.size) {
-                append("\n+ ${activeTasks.size - visibleTasks.size} tugas lainnya")
-            }
+            if (activeTasks.size > visibleTasks.size) append("\n+ ${activeTasks.size - visibleTasks.size} tugas lainnya")
         }
 
-        NotificationHelper.showActiveTasksNotification(
-            applicationContext,
-            message
-        )
-
-        AppDebugLog.d(
-            "NOTIFICATION",
-            "active task notification shown visible=${visibleTasks.size} total=${activeTasks.size}"
-        )
+        NotificationHelper.showActiveTasksNotification(applicationContext, message)
+        AppDebugLog.d("NOTIFICATION", "active task notification shown visible=${visibleTasks.size} total=${activeTasks.size}")
     }
 
-    private fun checkDeadlineTasks(
-        tasks: List<TaskEntity>,
-        reminderDays: Int
-    ) {
-        val today = Calendar.getInstance().apply {
-            set(Calendar.HOUR_OF_DAY, 0)
-            set(Calendar.MINUTE, 0)
-            set(Calendar.SECOND, 0)
-            set(Calendar.MILLISECOND, 0)
-        }
-
+    private fun checkDeadlineTasks(tasks: List<TaskEntity>, reminderDays: Int) {
+        val today = Calendar.getInstance().apply { resetTime() }
         val reminderStart = Calendar.getInstance().apply {
             time = today.time
             add(Calendar.DAY_OF_YEAR, reminderDays)
         }
 
         tasks.forEach { task ->
-            if (task.isCompleted) {
-                NotificationHelper.cancelTaskNotification(
-                    applicationContext,
-                    task.id.toString()
-                )
-                return@forEach
-            }
-
-            val deadline = task.deadline ?: run {
-                NotificationHelper.cancelTaskNotification(
-                    applicationContext,
-                    task.id.toString()
-                )
+            if (task.isCompleted || task.deadline == null) {
+                NotificationHelper.cancelTaskNotification(applicationContext, task.id.toString())
                 return@forEach
             }
 
             val deadlineDay = Calendar.getInstance().apply {
-                time = deadline
-                set(Calendar.HOUR_OF_DAY, 0)
-                set(Calendar.MINUTE, 0)
-                set(Calendar.SECOND, 0)
-                set(Calendar.MILLISECOND, 0)
+                time = task.deadline!!
+                resetTime()
             }
 
             val isOverdue = deadlineDay.timeInMillis < today.timeInMillis
             val shouldShow = deadlineDay.timeInMillis <= reminderStart.timeInMillis
 
             if (!shouldShow) {
-                NotificationHelper.cancelTaskNotification(
-                    applicationContext,
-                    task.id.toString()
-                )
+                NotificationHelper.cancelTaskNotification(applicationContext, task.id.toString())
                 return@forEach
             }
 
             if (isOverdue) {
                 val overdueDays = getOverdueDays(today, deadlineDay)
-                val detail = buildOverdueTaskDetail(task, overdueDays)
-
                 NotificationHelper.showOverdueTaskNotification(
                     applicationContext,
                     task.id.toString(),
                     "⚠️ ${task.title}",
-                    detail
+                    buildOverdueTaskDetail(task, overdueDays)
                 )
-
-                AppDebugLog.d(
-                    "NOTIFICATION",
-                    "overdue notification taskId=${task.id} days=$overdueDays"
-                )
+                AppDebugLog.d("NOTIFICATION", "overdue notification taskId=${task.id} days=$overdueDays")
                 return@forEach
             }
 
-            val detail = buildUpcomingTaskDetail(task)
             NotificationHelper.showTaskNotification(
                 applicationContext,
                 task.id.toString(),
                 "📝 ${task.title}",
-                detail
+                buildUpcomingTaskDetail(task)
             )
-
             AppDebugLog.d(
                 "NOTIFICATION",
-                "deadline notification taskId=${task.id} status=${getDeadlineText(Calendar.getInstance(), deadline)}"
+                "deadline notification taskId=${task.id} status=${getDeadlineText(Calendar.getInstance(), task.deadline!!)}"
             )
         }
     }
 
-    private fun buildUpcomingTaskDetail(task: TaskEntity): String {
-        val deadline = task.deadline ?: return buildBasicTaskDetail(task)
-        val status = getDeadlineText(Calendar.getInstance(), deadline)
-
-        return buildString {
-            task.description.takeIf { it.isNotBlank() }?.let {
-                append(it)
-                append("\n\n")
-            }
-            append("Deadline: ")
-            append(status)
-            append("\n")
-            append("Prioritas: ")
-            append(getPriorityText(task.priority))
-            append("\n\nTap untuk membuka tugas.")
-        }
+    private fun buildUpcomingTaskDetail(task: TaskEntity): String = buildString {
+        task.description.takeIf { it.isNotBlank() }?.let { append(it).append("\n\n") }
+        append("Deadline: ").append(getDeadlineText(Calendar.getInstance(), task.deadline!!))
+        append("\nPrioritas: ").append(getPriorityText(task.priority))
+        append("\n\nTap untuk membuka tugas.")
     }
 
-    private fun buildOverdueTaskDetail(task: TaskEntity, overdueDays: Long): String {
-        return buildString {
-            append("⚠️ TERLAMBAT")
-            append("\n")
-            append("Sudah lewat ")
-            append(overdueDays)
-            append(" hari")
-
-            task.description.takeIf { it.isNotBlank() }?.let {
-                append("\n\n")
-                append(it)
-            }
-
-            append("\n\nPrioritas: ")
-            append(getPriorityText(task.priority))
-            append("\n\nTap untuk membuka tugas.")
-        }
-    }
-
-    private fun buildBasicTaskDetail(task: TaskEntity): String {
-        return buildString {
-            task.description.takeIf { it.isNotBlank() }?.let {
-                append(it)
-                append("\n\n")
-            }
-            append("Prioritas: ")
-            append(getPriorityText(task.priority))
-            append("\n\nTap untuk membuka tugas.")
-        }
+    private fun buildOverdueTaskDetail(task: TaskEntity, overdueDays: Long): String = buildString {
+        append("⚠️ TERLAMBAT\nSudah lewat ").append(overdueDays).append(" hari")
+        task.description.takeIf { it.isNotBlank() }?.let { append("\n\n").append(it) }
+        append("\n\nPrioritas: ").append(getPriorityText(task.priority))
+        append("\n\nTap untuk membuka tugas.")
     }
 
     private suspend fun checkTodaySchedules(database: MyTaskDatabase) {
         val today = Calendar.getInstance().get(Calendar.DAY_OF_WEEK)
         val schedules = database.scheduleDao().getSchedulesByDay(today).first()
-
-        AppDebugLog.d(
-            "NOTIFICATION",
-            "today schedule evaluation day=$today count=${schedules.size}"
-        )
-
+        AppDebugLog.d("NOTIFICATION", "today schedule evaluation day=$today count=${schedules.size}")
         if (schedules.isEmpty()) return
 
         val courses = database.courseDao().getAllCourses().first()
-
-        schedules
-            .sortedBy { it.startTime }
-            .forEach { schedule ->
-                val course = courses.find { it.id == schedule.courseId }
-                val courseName = course?.name ?: "Mata Kuliah"
-
-                val message = buildString {
-                    append("${schedule.startTime} - ${schedule.endTime}")
-                    append("\n$courseName")
-                    if (schedule.room.isNotBlank()) {
-                        append("\nRuangan: ${schedule.room}")
-                    }
-                    append("\n\nTap untuk konfirmasi.")
-                }
-
-                NotificationHelper.showScheduleNotification(
-                    applicationContext,
-                    schedule.id.toString(),
-                    "🕒 Jadwal Kuliah",
-                    message
-                )
-
-                AppDebugLog.d(
-                    "NOTIFICATION",
-                    "schedule notification shown scheduleId=${schedule.id} courseId=${schedule.courseId}"
-                )
+        schedules.sortedBy { it.startTime }.forEach { schedule ->
+            val course = courses.find { it.id == schedule.courseId }
+            val message = buildString {
+                append("${schedule.startTime} - ${schedule.endTime}\n${course?.name ?: "Mata Kuliah"}")
+                if (schedule.room.isNotBlank()) append("\nRuangan: ${schedule.room}")
+                append("\n\nTap untuk konfirmasi.")
             }
+            NotificationHelper.showScheduleNotification(
+                applicationContext,
+                schedule.id.toString(),
+                "🕒 Jadwal Kuliah",
+                message
+            )
+            AppDebugLog.d("NOTIFICATION", "schedule notification shown scheduleId=${schedule.id} courseId=${schedule.courseId}")
+        }
     }
 
     private fun getDeadlineText(now: Calendar, deadline: Date): String {
-        val today = Calendar.getInstance().apply {
-            time = now.time
-            set(Calendar.HOUR_OF_DAY, 0)
-            set(Calendar.MINUTE, 0)
-            set(Calendar.SECOND, 0)
-            set(Calendar.MILLISECOND, 0)
-        }
-
-        val target = Calendar.getInstance().apply {
-            time = deadline
-            set(Calendar.HOUR_OF_DAY, 0)
-            set(Calendar.MINUTE, 0)
-            set(Calendar.SECOND, 0)
-            set(Calendar.MILLISECOND, 0)
-        }
-
-        val difference = target.timeInMillis - today.timeInMillis
-        val days = TimeUnit.MILLISECONDS.toDays(difference)
-
+        val today = Calendar.getInstance().apply { time = now.time; resetTime() }
+        val target = Calendar.getInstance().apply { time = deadline; resetTime() }
+        val days = TimeUnit.MILLISECONDS.toDays(target.timeInMillis - today.timeInMillis)
         return when {
             days < 0L -> "terlambat ${-days} hari"
             days == 0L -> "hari ini"
@@ -317,19 +189,20 @@ class DailyReminderWorker(
         }
     }
 
-    private fun getOverdueDays(today: Calendar, deadline: Calendar): Long {
-        val difference = today.timeInMillis - deadline.timeInMillis
-        return TimeUnit.MILLISECONDS
-            .toDays(difference)
-            .coerceAtLeast(1L)
+    private fun getOverdueDays(today: Calendar, deadline: Calendar): Long =
+        TimeUnit.MILLISECONDS.toDays(today.timeInMillis - deadline.timeInMillis).coerceAtLeast(1L)
+
+    private fun getPriorityText(priority: Int): String = when (priority) {
+        1 -> "Tinggi"
+        2 -> "Sedang"
+        3 -> "Rendah"
+        else -> "Normal"
     }
 
-    private fun getPriorityText(priority: Int): String {
-        return when (priority) {
-            1 -> "Tinggi"
-            2 -> "Sedang"
-            3 -> "Rendah"
-            else -> "Normal"
-        }
+    private fun Calendar.resetTime() {
+        set(Calendar.HOUR_OF_DAY, 0)
+        set(Calendar.MINUTE, 0)
+        set(Calendar.SECOND, 0)
+        set(Calendar.MILLISECOND, 0)
     }
 }
