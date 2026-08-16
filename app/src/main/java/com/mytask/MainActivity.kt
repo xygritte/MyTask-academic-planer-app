@@ -193,9 +193,6 @@ private fun MyTaskApp(
         sessionProfile = immediateProfile
         sessionUid = user.uid
 
-        // Read the persisted flag once for this login/session. On a normal app reopen it
-        // is false, so Room is used directly. After a fresh login it is true, so cloud
-        // restore runs exactly once.
         val shouldRestoreFromCloud = runCatching {
             userProfileRepository.restorePending.first()
         }.getOrDefault(false)
@@ -229,8 +226,6 @@ private fun MyTaskApp(
                 syncReady = false
                 accountLoading = false
                 shouldShowTemplatePrompt = false
-                // A Firebase-authenticated user without a successfully restored workspace
-                // is treated as a failed login, never as an empty account.
                 runCatching { authRepository.clearLocalSession() }
             }
         } else {
@@ -254,13 +249,13 @@ private fun MyTaskApp(
         Box(modifier = Modifier.fillMaxSize()) {
             MyTaskMainContent(
                 profile = activeProfile,
-                canSaveOnline = currentFirebaseUser != null,
-                isSavingOnline = isSavingOnline,
+                canSaveOnline = currentFirebaseUser != null && isOnline,
+                isSavingOnline = isSavingOnline || !isOnline,
                 onlineSaveMessage = onlineSaveMessage,
                 authRepository = authRepository,
                 onSaveDataOnline = {
                     val user = currentFirebaseUser
-                    if (user != null && !isSavingOnline) {
+                    if (user != null && isOnline && !isSavingOnline) {
                         scope.launch {
                             isSavingOnline = true
                             onlineSaveMessage = null
@@ -279,6 +274,34 @@ private fun MyTaskApp(
                     accountLoading = false
                     onlineSaveMessage = null
                     shouldShowTemplatePrompt = false
+                },
+                onLogout = {
+                    val user = currentFirebaseUser
+                    if (isOnline && !isSavingOnline) {
+                        scope.launch {
+                            isSavingOnline = true
+                            onlineSaveMessage = null
+
+                            if (user != null) {
+                                runCatching {
+                                    cloudDataSyncRepository.uploadCurrentData(user.uid)
+                                }.onSuccess {
+                                    onlineSaveMessage = "Data berhasil disimpan. Keluar dari akun..."
+                                    authRepository.clearLocalSession()
+                                }.onFailure { error ->
+                                    onlineSaveMessage = error.message
+                                        ?: "Data gagal disimpan. Logout dibatalkan."
+                                    isSavingOnline = false
+                                    return@launch
+                                }
+                            } else {
+                                authRepository.clearLocalSession()
+                            }
+
+                            isSavingOnline = false
+                            onlineSaveMessage = null
+                        }
+                    }
                 }
             )
 
@@ -337,6 +360,13 @@ private fun MyTaskApp(
                 restorePendingState = false
                 syncReady = false
                 shouldShowTemplatePrompt = false
+            },
+            onLogout = {
+                if (isOnline) {
+                    scope.launch {
+                        authRepository.clearLocalSession()
+                    }
+                }
             }
         )
         return
@@ -360,7 +390,8 @@ private fun MyTaskMainContent(
     onlineSaveMessage: String?,
     authRepository: FirebaseAuthRepository,
     onSaveDataOnline: () -> Unit,
-    onLoggedOut: () -> Unit
+    onLoggedOut: () -> Unit,
+    onLogout: () -> Unit
 ) {
     val navController = rememberNavController()
     val scope = rememberCoroutineScope()
@@ -463,7 +494,7 @@ private fun MyTaskMainContent(
                             onBackupData = { navController.navigate(Screen.Backup.route) },
                             onEditProfile = {},
                             onSaveDataOnline = onSaveDataOnline,
-                            onLogout = { scope.launch { authRepository.clearLocalSession(); onLoggedOut() } }
+                            onLogout = onLogout
                         )
                     }
                 }
