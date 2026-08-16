@@ -15,9 +15,12 @@ class TemplatePreferenceRepository(
     private val context: Context
 ) {
 
+    // v2 intentionally ignores the older prompt flag from previous builds.
+    // This guarantees that an account that has never completed the new
+    // onboarding template flow still gets the one-time prompt.
     private fun promptKey(uid: String) =
         booleanPreferencesKey(
-            "academic_template_prompt_shown_$uid"
+            "academic_template_prompt_v2_shown_$uid"
         )
 
     fun promptShown(
