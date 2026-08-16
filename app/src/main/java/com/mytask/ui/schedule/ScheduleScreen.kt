@@ -55,12 +55,20 @@ import com.mytask.data.local.entity.ScheduleEntity
 
 @Composable
 fun ScheduleScreen(
+    addRequestKey: Int = 0,
+    onAddData: () -> Unit = {},
     viewModel: ScheduleViewModel = hiltViewModel()
 ) {
     val schedules by viewModel.schedules.collectAsState()
     val courses by viewModel.courses.collectAsState()
 
     var editingScheduleId by remember { mutableStateOf<Long?>(null) }
+
+    LaunchedEffect(addRequestKey) {
+        if (addRequestKey > 0) {
+            editingScheduleId = -1L
+        }
+    }
 
     Scaffold(
         topBar = {
@@ -70,11 +78,11 @@ fun ScheduleScreen(
         },
         floatingActionButton = {
             FloatingActionButton(
-                onClick = { editingScheduleId = -1L }
+                onClick = onAddData
             ) {
                 Icon(
                     imageVector = Icons.Default.Add,
-                    contentDescription = "Tambah Jadwal"
+                    contentDescription = "Tambah Data"
                 )
             }
         }
