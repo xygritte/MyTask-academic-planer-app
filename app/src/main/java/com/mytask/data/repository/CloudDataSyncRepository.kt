@@ -4,6 +4,7 @@ import android.content.Context
 import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
 import androidx.room.withTransaction
+import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
 import com.mytask.Notification.NotificationHelper
 import com.mytask.Notification.ReminderScheduler
@@ -29,7 +30,8 @@ import javax.inject.Singleton
 @Singleton
 class CloudDataSyncRepository @Inject constructor(
     @ApplicationContext private val context: Context,
-    private val database: MyTaskDatabase
+    private val database: MyTaskDatabase,
+    private val userProfileRepository: UserProfileRepository
 ) {
 
     private val firestore = FirebaseFirestore.getInstance()
@@ -120,6 +122,25 @@ class CloudDataSyncRepository @Inject constructor(
                 "CLOUD_RESTORE failed: uid=${AuthDebugLog.uid(uid)} ${error::class.simpleName}: $message",
                 error
             )
+
+            // A cloud restore failure must never leave an authenticated user
+            // inside an empty or partially restored workspace. Clear all local
+            // session data and terminate the Firebase session so MainActivity's
+            // auth-state listener returns the app to LoginScreen.
+            runCatching {
+                clearLocalSessionData()
+                userProfileRepository.clearProfile()
+                FirebaseAuth.getInstance().signOut()
+                AuthDebugLog.d(
+                    "CLOUD_RESTORE failure cleanup completed: uid=${AuthDebugLog.uid(uid)} signedOut=true"
+                )
+            }.onFailure { cleanupError ->
+                AuthDebugLog.e(
+                    "CLOUD_RESTORE failure cleanup failed: uid=${AuthDebugLog.uid(uid)}",
+                    cleanupError
+                )
+            }
+
             ReminderScheduler.initialize(context)
             throw error
         }
