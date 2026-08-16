@@ -136,14 +136,22 @@ class UserProfileRepository @Inject constructor(
     }
 
     suspend fun saveProfilePhotoUri(uri: String?) {
+        val storedUri = when {
+            uri.isNullOrBlank() -> null
+            uri.startsWith("file://") -> "$uri?v=${System.currentTimeMillis()}"
+            else -> uri
+        }
+
         context.userProfileDataStore.edit { preferences ->
-            if (uri.isNullOrBlank()) {
+            if (storedUri == null) {
                 preferences.remove(PROFILE_PHOTO_URI_KEY)
             } else {
-                preferences[PROFILE_PHOTO_URI_KEY] = uri
+                preferences[PROFILE_PHOTO_URI_KEY] = storedUri
             }
         }
-        AuthDebugLog.d("PROFILE_STORE profile photo ${if (uri.isNullOrBlank()) "cleared" else "saved"}")
+        AuthDebugLog.d(
+            "PROFILE_STORE profile photo ${if (storedUri == null) "cleared" else "saved"}"
+        )
     }
 
     suspend fun markCloudRestorePending() {
