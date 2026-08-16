@@ -2,9 +2,11 @@
 
 package com.mytask.ui.profile
 
+import android.content.Context
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.activity.result.PickVisualMediaRequest
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.clickable
@@ -70,10 +72,12 @@ import com.mytask.R
 import com.mytask.data.repository.UserProfile
 import com.mytask.data.repository.UserProfileRepository
 import com.mytask.debug.AuthDebugLog
+import com.yalantis.ucrop.UCrop
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.tasks.await
 import kotlinx.coroutines.withContext
+import java.io.File
 
 @Composable
 fun ProfileScreen(
@@ -102,27 +106,78 @@ fun ProfileScreen(
     var isUpdatingProfile by remember { mutableStateOf(false) }
     var editError by remember { mutableStateOf<String?>(null) }
     var editSuccess by remember { mutableStateOf<String?>(null) }
+    var isCroppingPhoto by remember { mutableStateOf(false) }
+    var photoError by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
 
-    val photoPicker = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.OpenDocument()
-    ) { uri: Uri? ->
-        if (uri != null) {
-            scope.launch {
-                runCatching {
-                    context.contentResolver.takePersistableUriPermission(
-                        uri,
-                        android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION
-                    )
+    val cropLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        isCroppingPhoto = false
+
+        if (result.resultCode == android.app.Activity.RESULT_OK) {
+            val outputUri = result.data?.let { UCrop.getOutput(it) }
+            if (outputUri != null) {
+                scope.launch {
+                    runCatching {
+                        userProfileRepository.saveProfilePhotoUri(outputUri.toString())
+                    }.onSuccess {
+                        photoError = null
+                        AuthDebugLog.d("PROFILE_PHOTO cropped and saved")
+                    }.onFailure { error ->
+                        photoError = error.message ?: "Foto profil gagal disimpan."
+                        AuthDebugLog.e("PROFILE_PHOTO save failed", error)
+                    }
                 }
-                userProfileRepository.saveProfilePhotoUri(uri.toString())
-                AuthDebugLog.d("PROFILE_PHOTO selected")
             }
+        } else if (result.resultCode == UCrop.RESULT_ERROR) {
+            val error = result.data?.let { UCrop.getError(it) }
+            photoError = error?.message ?: "Foto profil gagal dipotong."
+            AuthDebugLog.e("PROFILE_PHOTO crop failed", error)
+        }
+    }
+
+    val photoPicker = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.PickVisualMedia()
+    ) { uri: Uri? ->
+        if (uri == null) return@rememberLauncherForActivityResult
+
+        try {
+            val outputFile = File(context.filesDir, "profile_photo.jpg")
+            outputFile.parentFile?.mkdirs()
+            outputFile.delete()
+
+            val options = UCrop.Options().apply {
+                setCircleDimmedLayer(true)
+                setShowCropFrame(true)
+                setShowCropGrid(true)
+                setCompressionQuality(90)
+            }
+
+            val cropIntent = UCrop
+                .of(uri, Uri.fromFile(outputFile))
+                .withAspectRatio(1f, 1f)
+                .withMaxResultSize(1024, 1024)
+                .withOptions(options)
+                .getIntent(context)
+
+            isCroppingPhoto = true
+            photoError = null
+            cropLauncher.launch(cropIntent)
+            AuthDebugLog.d("PROFILE_PHOTO picker result received; crop launched")
+        } catch (error: Throwable) {
+            isCroppingPhoto = false
+            photoError = error.message ?: "Foto profil gagal diproses."
+            AuthDebugLog.e("PROFILE_PHOTO crop launch failed", error)
         }
     }
 
     fun launchPhotoPicker() {
-        photoPicker.launch(arrayOf("image/*"))
+        photoPicker.launch(
+            PickVisualMediaRequest(
+                ActivityResultContracts.PickVisualMedia.ImageOnly
+            )
+        )
     }
 
     Scaffold(
@@ -171,7 +226,10 @@ fun ProfileScreen(
                             modifier = Modifier
                                 .fillMaxSize()
                                 .clip(CircleShape)
-                                .clickable(onClick = ::launchPhotoPicker),
+                                .clickable(
+                                    enabled = !isCroppingPhoto,
+                                    onClick = ::launchPhotoPicker
+                                ),
                             shape = CircleShape,
                             color = MaterialTheme.colorScheme.secondaryContainer
                         ) {
@@ -196,6 +254,24 @@ fun ProfileScreen(
                             }
                         }
 
+                        if (isCroppingPhoto) {
+                            Surface(
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .clip(CircleShape),
+                                shape = CircleShape,
+                                color = MaterialTheme.colorScheme.scrim.copy(alpha = 0.45f)
+                            ) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier
+                                        .align(Alignment.Center)
+                                        .size(28.dp),
+                                    strokeWidth = 3.dp,
+                                    color = MaterialTheme.colorScheme.onPrimary
+                                )
+                            }
+                        }
+
                         Surface(
                             modifier = Modifier
                                 .align(Alignment.BottomEnd)
@@ -206,6 +282,7 @@ fun ProfileScreen(
                         ) {
                             IconButton(
                                 onClick = ::launchPhotoPicker,
+                                enabled = !isCroppingPhoto,
                                 modifier = Modifier.fillMaxSize()
                             ) {
                                 Icon(
@@ -259,7 +336,7 @@ fun ProfileScreen(
                             editSuccess = null
                             showEditDialog = true
                         },
-                        enabled = !isUpdatingProfile
+                        enabled = !isUpdatingProfile && !isCroppingPhoto
                     ) {
                         Icon(
                             imageVector = Icons.Default.Edit,
@@ -269,6 +346,21 @@ fun ProfileScreen(
                         Spacer(Modifier.size(8.dp))
                         Text("Edit profil")
                     }
+                }
+            }
+
+            photoError?.let { message ->
+                Surface(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp),
+                    color = MaterialTheme.colorScheme.errorContainer
+                ) {
+                    Text(
+                        text = message,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onErrorContainer,
+                        modifier = Modifier.padding(12.dp)
+                    )
                 }
             }
 
@@ -340,7 +432,7 @@ fun ProfileScreen(
                 description = "Keluar dari akun MyTask di perangkat ini.",
                 onClick = onLogout,
                 destructive = true,
-                enabled = !isSavingOnline && !isUpdatingProfile
+                enabled = !isSavingOnline && !isUpdatingProfile && !isCroppingPhoto
             )
 
             Spacer(Modifier.height(4.dp))
