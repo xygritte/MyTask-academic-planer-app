@@ -13,6 +13,7 @@ import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
 import com.mytask.MainActivity
 import com.mytask.R
+import com.mytask.debug.AppDebugLog
 import kotlin.math.abs
 
 object NotificationHelper {
@@ -45,28 +46,26 @@ object NotificationHelper {
 
         manager.createNotificationChannel(taskChannel)
         manager.createNotificationChannel(scheduleChannel)
+        AppDebugLog.d("NOTIFICATION", "channels ready")
     }
 
-    fun showActiveTasksNotification(
-        context: Context,
-        message: String
-    ) {
-        if (!canNotify(context)) return
+    fun showActiveTasksNotification(context: Context, message: String) {
+        if (!canNotify(context)) {
+            AppDebugLog.d("NOTIFICATION", "active task notification skipped: permission/setting disabled")
+            return
+        }
 
         createChannels(context)
 
         val intent = Intent(context, MainActivity::class.java).apply {
-            flags =
-                Intent.FLAG_ACTIVITY_NEW_TASK or
-                        Intent.FLAG_ACTIVITY_CLEAR_TOP
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
         }
 
         val pendingIntent = PendingIntent.getActivity(
             context,
             ACTIVE_TASKS_NOTIFICATION_ID,
             intent,
-            PendingIntent.FLAG_UPDATE_CURRENT or
-                    PendingIntent.FLAG_IMMUTABLE
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
         val notification = NotificationCompat
@@ -85,12 +84,15 @@ object NotificationHelper {
         NotificationManagerCompat
             .from(context)
             .notify(ACTIVE_TASKS_NOTIFICATION_ID, notification)
+
+        AppDebugLog.d("NOTIFICATION", "posted active-task notification")
     }
 
     fun cancelActiveTasksNotification(context: Context) {
         NotificationManagerCompat
             .from(context)
             .cancel(ACTIVE_TASKS_NOTIFICATION_ID)
+        AppDebugLog.d("NOTIFICATION", "cancelled active-task notification")
     }
 
     fun showTaskNotification(
@@ -130,24 +132,26 @@ object NotificationHelper {
         message: String,
         overdue: Boolean
     ) {
-        if (!canNotify(context)) return
+        if (!canNotify(context)) {
+            AppDebugLog.d(
+                "NOTIFICATION",
+                "task notification skipped taskId=$taskId permission/setting disabled"
+            )
+            return
+        }
 
         createChannels(context)
-
         val notificationId = taskNotificationId(taskId)
 
         val intent = Intent(context, MainActivity::class.java).apply {
-            flags =
-                Intent.FLAG_ACTIVITY_NEW_TASK or
-                        Intent.FLAG_ACTIVITY_CLEAR_TOP
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
         }
 
         val pendingIntent = PendingIntent.getActivity(
             context,
             notificationId,
             intent,
-            PendingIntent.FLAG_UPDATE_CURRENT or
-                    PendingIntent.FLAG_IMMUTABLE
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
         val builder = NotificationCompat
@@ -171,15 +175,18 @@ object NotificationHelper {
         NotificationManagerCompat
             .from(context)
             .notify(notificationId, builder.build())
+
+        AppDebugLog.d(
+            "NOTIFICATION",
+            "posted task notification taskId=$taskId overdue=$overdue notificationId=$notificationId"
+        )
     }
 
-    fun cancelTaskNotification(
-        context: Context,
-        taskId: String
-    ) {
+    fun cancelTaskNotification(context: Context, taskId: String) {
         NotificationManagerCompat
             .from(context)
             .cancel(taskNotificationId(taskId))
+        AppDebugLog.d("NOTIFICATION", "cancelled task notification taskId=$taskId")
     }
 
     fun showScheduleNotification(
@@ -188,16 +195,18 @@ object NotificationHelper {
         title: String,
         message: String
     ) {
-        if (!canNotify(context)) return
+        if (!canNotify(context)) {
+            AppDebugLog.d(
+                "NOTIFICATION",
+                "schedule notification skipped scheduleId=$scheduleId permission/setting disabled"
+            )
+            return
+        }
 
         createChannels(context)
-
         val notificationId = scheduleNotificationId(scheduleId)
 
-        val intent = Intent(
-            context,
-            ScheduleNotificationReceiver::class.java
-        ).apply {
+        val intent = Intent(context, ScheduleNotificationReceiver::class.java).apply {
             putExtra("notification_id", notificationId)
         }
 
@@ -205,8 +214,7 @@ object NotificationHelper {
             context,
             notificationId,
             intent,
-            PendingIntent.FLAG_UPDATE_CURRENT or
-                    PendingIntent.FLAG_IMMUTABLE
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
         val notification = NotificationCompat
@@ -224,17 +232,18 @@ object NotificationHelper {
         NotificationManagerCompat
             .from(context)
             .notify(notificationId, notification)
+
+        AppDebugLog.d(
+            "NOTIFICATION",
+            "posted schedule notification scheduleId=$scheduleId notificationId=$notificationId"
+        )
     }
 
-    /**
-     * Clears every notification currently posted by MyTask on this device.
-     * Needed when changing accounts so account A's reminders cannot remain
-     * visible while account B is active.
-     */
     fun cancelAllAppNotifications(context: Context) {
         NotificationManagerCompat
             .from(context)
             .cancelAll()
+        AppDebugLog.d("NOTIFICATION", "cancelled all app notifications")
     }
 
     private fun taskNotificationId(taskId: String): Int {
