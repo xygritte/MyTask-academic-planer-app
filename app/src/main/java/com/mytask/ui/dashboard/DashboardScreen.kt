@@ -76,7 +76,7 @@ fun DashboardScreen(
     val today = Calendar.getInstance().get(Calendar.DAY_OF_WEEK)
     val todaySchedules = schedules
         .filter { it.dayOfWeek == today }
-        .sortedBy { it.startTime }
+        .sortedBy { it.startMinutes }
 
     val upcomingTasks = tasks
         .filter { !it.isCompleted }
@@ -387,8 +387,8 @@ private fun TodayScheduleCard(schedules: List<ScheduleEntity>, courses: List<Cou
 private fun TodayScheduleRow(schedule: ScheduleEntity, courseName: String) {
     Row(Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
         Column(Modifier.width(68.dp)) {
-            Text(schedule.startTime, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-            Text(schedule.endTime, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(formatScheduleTime(schedule.startMinutes), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+            Text(formatScheduleTime(schedule.endMinutes), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         Spacer(Modifier.width(14.dp))
         Surface(Modifier.size(8.dp), CircleShape, color = MaterialTheme.colorScheme.primary) {}
@@ -467,6 +467,13 @@ private fun EmptyTaskCard() {
             }
         }
     }
+}
+
+private fun formatScheduleTime(totalMinutes: Int): String {
+    val safeMinutes = totalMinutes.coerceIn(0, 1439)
+    val hour = safeMinutes / 60
+    val minute = safeMinutes % 60
+    return "%02d:%02d".format(hour, minute)
 }
 
 private fun isOverdue(deadline: java.util.Date): Boolean = deadline.time < System.currentTimeMillis()
