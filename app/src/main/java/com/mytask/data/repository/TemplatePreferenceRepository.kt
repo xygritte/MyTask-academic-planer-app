@@ -15,19 +15,23 @@ class TemplatePreferenceRepository(
     private val context: Context
 ) {
 
-    companion object {
-        private val PROMPT_SHOWN_KEY =
-            booleanPreferencesKey("academic_template_prompt_shown")
-    }
+    private fun promptKey(uid: String) =
+        booleanPreferencesKey(
+            "academic_template_prompt_shown_$uid"
+        )
 
-    val promptShown: Flow<Boolean> =
+    fun promptShown(
+        uid: String
+    ): Flow<Boolean> =
         context.templatePreferencesDataStore.data.map { preferences ->
-            preferences[PROMPT_SHOWN_KEY] ?: false
+            preferences[promptKey(uid)] ?: false
         }
 
-    suspend fun markPromptShown() {
+    suspend fun markPromptShown(
+        uid: String
+    ) {
         context.templatePreferencesDataStore.edit { preferences ->
-            preferences[PROMPT_SHOWN_KEY] = true
+            preferences[promptKey(uid)] = true
         }
     }
 }
