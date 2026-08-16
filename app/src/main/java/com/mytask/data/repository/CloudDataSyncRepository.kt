@@ -12,6 +12,8 @@ import com.mytask.data.local.MyTaskDatabase
 import com.mytask.data.local.entity.CourseEntity
 import com.mytask.data.local.entity.ScheduleEntity
 import com.mytask.data.local.entity.TaskEntity
+import com.mytask.data.local.toDisplayTime
+import com.mytask.data.local.toMinuteOfDayOrNull
 import com.mytask.debug.AuthDebugLog
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.TimeoutCancellationException
@@ -122,14 +124,6 @@ class CloudDataSyncRepository @Inject constructor(
                 clearLocalSessionData()
                 userProfileRepository.clearProfile()
                 FirebaseAuth.getInstance().signOut()
-                AuthDebugLog.d(
-                    "CLOUD_RESTORE failure cleanup completed: uid=${AuthDebugLog.uid(uid)} signedOut=true"
-                )
-            }.onFailure { cleanupError ->
-                AuthDebugLog.e(
-                    "CLOUD_RESTORE failure cleanup failed: uid=${AuthDebugLog.uid(uid)}",
-                    cleanupError
-                )
             }
 
             ReminderScheduler.initialize(context)
@@ -283,7 +277,7 @@ class CloudDataSyncRepository @Inject constructor(
     ): String {
         return JSONObject().apply {
             put("app", "MyTask")
-            put("version", 1)
+            put("version", 2)
             put("createdAt", System.currentTimeMillis())
 
             put("courses", JSONArray().apply {
@@ -319,8 +313,11 @@ class CloudDataSyncRepository @Inject constructor(
                         put("id", schedule.id)
                         put("courseId", schedule.courseId ?: JSONObject.NULL)
                         put("dayOfWeek", schedule.dayOfWeek)
-                        put("startTime", schedule.startTime)
-                        put("endTime", schedule.endTime)
+                        put("startMinutes", schedule.startMinutes)
+                        put("endMinutes", schedule.endMinutes)
+                        // Keep human-readable keys for backward compatibility and export files.
+                        put("startTime", schedule.startMinutes.toDisplayTime())
+                        put("endTime", schedule.endMinutes.toDisplayTime())
                         put("room", schedule.room)
                     })
                 }
@@ -353,11 +350,7 @@ class CloudDataSyncRepository @Inject constructor(
                 val item = array.getJSONObject(index)
                 val courseId = if (item.isNull("courseId")) null else item.optLong("courseId")
                 val deadline = if (item.isNull("deadline")) null else Date(item.optLong("deadline"))
-                val completedAt = if (item.isNull("completedAt")) {
-                    null
-                } else {
-                    Date(item.optLong("completedAt"))
-                }
+                val completedAt = if (item.isNull("completedAt")) null else Date(item.optLong("completedAt"))
                 add(
                     TaskEntity(
                         id = item.optLong("id", 0L),
@@ -380,13 +373,25 @@ class CloudDataSyncRepository @Inject constructor(
             for (index in 0 until array.length()) {
                 val item = array.getJSONObject(index)
                 val courseId = if (item.isNull("courseId")) null else item.optLong("courseId")
+                val legacyStart = item.optString("startTime", "")
+                val legacyEnd = item.optString("endTime", "")
+                val startMinutes = if (item.has("startMinutes")) {
+                    item.optInt("startMinutes")
+                } else {
+                    legacyStart.toMinuteOfDayOrNull() ?: 0
+                }
+                val endMinutes = if (item.has("endMinutes")) {
+                    item.optInt("endMinutes")
+                } else {
+                    legacyEnd.toMinuteOfDayOrNull() ?: 0
+                }
                 add(
                     ScheduleEntity(
                         id = item.optLong("id", 0L),
                         courseId = courseId,
                         dayOfWeek = item.optInt("dayOfWeek", 1),
-                        startTime = item.optString("startTime"),
-                        endTime = item.optString("endTime"),
+                        startMinutes = startMinutes.coerceIn(0, 1439),
+                        endMinutes = endMinutes.coerceIn(0, 1439),
                         room = item.optString("room")
                     )
                 )
