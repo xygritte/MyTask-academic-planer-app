@@ -1,7 +1,13 @@
 package com.mytask.data.repository
 
+import android.content.Context
+import androidx.credentials.CredentialManager
+import androidx.credentials.GetCredentialRequest
+import com.google.android.libraries.identity.googleid.GetGoogleIdOption
+import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.FirebaseUser
+import com.google.firebase.auth.GoogleAuthProvider
 import com.google.firebase.auth.UserProfileChangeRequest
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.SetOptions
@@ -25,7 +31,6 @@ class FirebaseAuthRepository @Inject constructor(
         FirebaseFirestore.getInstance()
 
     val authState: Flow<FirebaseUser?> = callbackFlow {
-
         val listener = FirebaseAuth.AuthStateListener { firebaseAuth ->
             trySend(firebaseAuth.currentUser)
         }
@@ -48,7 +53,6 @@ class FirebaseAuthRepository @Inject constructor(
     ): Result<UserProfile> {
 
         return try {
-
             val authResult =
                 auth.createUserWithEmailAndPassword(
                     email.trim(),
@@ -70,21 +74,7 @@ class FirebaseAuthRepository @Inject constructor(
                 program = program.trim()
             )
 
-            firestore
-                .collection("users")
-                .document(user.uid)
-                .set(
-                    mapOf(
-                        "uid" to user.uid,
-                        "name" to profile.name,
-                        "program" to profile.program,
-                        "email" to user.email,
-                        "createdAt" to System.currentTimeMillis()
-                    ),
-                    SetOptions.merge()
-                )
-                .await()
-
+            saveCloudProfile(user, profile)
             userProfileRepository.saveProfile(
                 uid = user.uid,
                 name = profile.name,
@@ -92,16 +82,12 @@ class FirebaseAuthRepository @Inject constructor(
             )
 
             Result.success(profile)
-
         } catch (error: Throwable) {
-
             runCatching {
                 auth.currentUser?.delete()?.await()
             }
-
             auth.signOut()
             userProfileRepository.clearProfile()
-
             Result.failure(error)
         }
     }
@@ -112,7 +98,6 @@ class FirebaseAuthRepository @Inject constructor(
     ): Result<UserProfile> {
 
         return try {
-
             val authResult =
                 auth.signInWithEmailAndPassword(
                     email.trim(),
@@ -123,54 +108,140 @@ class FirebaseAuthRepository @Inject constructor(
                 authResult.user
                     ?: error("Akun tidak ditemukan.")
 
-            val profileDocument =
-                firestore
-                    .collection("users")
-                    .document(user.uid)
-                    .get()
-                    .await()
-
-            val name =
-                profileDocument
-                    .getString("name")
-                    ?.trim()
-                    ?.takeIf { it.isNotBlank() }
-                    ?: user.displayName
-                        ?.trim()
-                        ?.takeIf { it.isNotBlank() }
-                    ?: error("Profil akun belum lengkap.")
-
-            val program =
-                profileDocument
-                    .getString("program")
-                    ?.trim()
-                    ?.takeIf { it.isNotBlank() }
-                    ?: error("Program studi pada profil belum diatur.")
+            val profile = loadCloudProfile(user)
 
             userProfileRepository.saveProfile(
                 uid = user.uid,
-                name = name,
-                program = program
+                name = profile.name,
+                program = profile.program
             )
 
-            Result.success(
-                UserProfile(
-                    name = name,
-                    program = program
-                )
-            )
-
+            Result.success(profile)
         } catch (error: Throwable) {
-
             auth.signOut()
             userProfileRepository.clearProfile()
-
             Result.failure(error)
         }
     }
 
-    suspend fun reloadProfile(): Result<UserProfile> {
+    suspend fun signInWithGoogle(
+        context: Context
+    ): Result<UserProfile> {
 
+        return try {
+            val credentialManager =
+                CredentialManager.create(context)
+
+            val googleIdOption =
+                GetGoogleIdOption.Builder()
+                    .setServerClientId(
+                        context.getString(
+                            com.mytask.R.string.default_web_client_id
+                        )
+                    )
+                    .setFilterByAuthorizedAccounts(false)
+                    .setAutoSelectEnabled(false)
+                    .build()
+
+            val request =
+                GetCredentialRequest.Builder()
+                    .addCredentialOption(
+                        googleIdOption
+                    )
+                    .build()
+
+            val result =
+                credentialManager.getCredential(
+                    context,
+                    request
+                )
+
+            val credential =
+                result.credential
+
+            val googleCredential =
+                GoogleIdTokenCredential
+                    .createFrom(
+                        credential.data
+                    )
+
+            val firebaseCredential =
+                GoogleAuthProvider.getCredential(
+                    googleCredential.idToken,
+                    null
+                )
+
+            val authResult =
+                auth.signInWithCredential(
+                    firebaseCredential
+                ).await()
+
+            val user =
+                authResult.user
+                    ?: error("Akun Google tidak berhasil masuk.")
+
+            val existingProfile =
+                runCatching {
+                    loadCloudProfile(user)
+                }.getOrNull()
+
+            val profile =
+                existingProfile
+                    ?: UserProfile(
+                        name = user.displayName
+                            ?.trim()
+                            ?.takeIf { it.isNotBlank() }
+                            ?: "Mahasiswa",
+                        program = "Program Studi belum diatur"
+                    )
+
+            if (existingProfile == null) {
+                saveCloudProfile(
+                    user,
+                    profile
+                )
+            }
+
+            userProfileRepository.saveProfile(
+                uid = user.uid,
+                name = profile.name,
+                program = profile.program
+            )
+
+            Result.success(profile)
+        } catch (error: Throwable) {
+            auth.signOut()
+            userProfileRepository.clearProfile()
+            Result.failure(error)
+        }
+    }
+
+    suspend fun continueAsGuest(
+        name: String,
+        program: String
+    ): Result<UserProfile> {
+        return runCatching {
+            val profile = UserProfile(
+                name = name.trim(),
+                program = program.trim()
+            )
+
+            if (profile.name.isBlank() || profile.program.isBlank()) {
+                error("Nama dan program studi wajib diisi.")
+            }
+
+            auth.signOut()
+
+            userProfileRepository.saveGuestProfile(
+                name = profile.name,
+                program = profile.program
+            )
+
+            profile
+        }
+    }
+
+    suspend fun reloadProfile(): Result<UserProfile> {
         val user =
             auth.currentUser
                 ?: return Result.failure(
@@ -180,41 +251,14 @@ class FirebaseAuthRepository @Inject constructor(
                 )
 
         return try {
-
             user.reload().await()
-
             val refreshedUser =
                 auth.currentUser
                     ?: error("Sesi login tidak tersedia.")
 
-            val profileDocument =
-                firestore
-                    .collection("users")
-                    .document(refreshedUser.uid)
-                    .get()
-                    .await()
-
-            val name =
-                profileDocument
-                    .getString("name")
-                    ?.trim()
-                    ?.takeIf { it.isNotBlank() }
-                    ?: refreshedUser.displayName
-                        ?.trim()
-                        ?.takeIf { it.isNotBlank() }
-                    ?: error("Profil akun belum lengkap.")
-
-            val program =
-                profileDocument
-                    .getString("program")
-                    ?.trim()
-                    ?.takeIf { it.isNotBlank() }
-                    ?: error("Program studi pada profil belum diatur.")
-
             val profile =
-                UserProfile(
-                    name = name,
-                    program = program
+                loadCloudProfile(
+                    refreshedUser
                 )
 
             userProfileRepository.saveProfile(
@@ -224,9 +268,7 @@ class FirebaseAuthRepository @Inject constructor(
             )
 
             Result.success(profile)
-
         } catch (error: Throwable) {
-
             val cached =
                 userProfileRepository.profile.first()
 
@@ -238,7 +280,65 @@ class FirebaseAuthRepository @Inject constructor(
         }
     }
 
+    suspend fun clearLocalSession() {
+        userProfileRepository.clearProfile()
+        auth.signOut()
+    }
+
     fun signOut() {
         auth.signOut()
+    }
+
+    private suspend fun saveCloudProfile(
+        user: FirebaseUser,
+        profile: UserProfile
+    ) {
+        firestore
+            .collection("users")
+            .document(user.uid)
+            .set(
+                mapOf(
+                    "uid" to user.uid,
+                    "name" to profile.name,
+                    "program" to profile.program,
+                    "email" to user.email,
+                    "updatedAt" to System.currentTimeMillis()
+                ),
+                SetOptions.merge()
+            )
+            .await()
+    }
+
+    private suspend fun loadCloudProfile(
+        user: FirebaseUser
+    ): UserProfile {
+        val profileDocument =
+            firestore
+                .collection("users")
+                .document(user.uid)
+                .get()
+                .await()
+
+        val name =
+            profileDocument
+                .getString("name")
+                ?.trim()
+                ?.takeIf { it.isNotBlank() }
+                ?: user.displayName
+                    ?.trim()
+                    ?.takeIf { it.isNotBlank() }
+                ?: error("Profil akun belum lengkap.")
+
+        val program =
+            profileDocument
+                .getString("program")
+                ?.trim()
+                ?.takeIf { it.isNotBlank() }
+                ?: "Program Studi belum diatur"
+
+        return UserProfile(
+            name = name,
+            program = program
+        )
     }
 }
