@@ -423,6 +423,48 @@ class FirebaseAuthRepository @Inject constructor(
         }
     }
 
+    suspend fun updateCurrentUserProfile(
+        name: String,
+        program: String
+    ): Result<UserProfile> {
+        val user = auth.currentUser
+            ?: return Result.failure(IllegalStateException("Belum ada pengguna yang login."))
+
+        val cleanName = name.trim()
+        val cleanProgram = program.trim()
+
+        if (cleanName.isBlank() || cleanProgram.isBlank()) {
+            return Result.failure(IllegalArgumentException("Nama dan program studi wajib diisi."))
+        }
+
+        return try {
+            user.updateProfile(
+                UserProfileChangeRequest.Builder()
+                    .setDisplayName(cleanName)
+                    .build()
+            ).await()
+
+            val profile = UserProfile(cleanName, cleanProgram)
+            saveCloudProfile(user, profile)
+
+            withContext(NonCancellable) {
+                userProfileRepository.saveProfile(
+                    uid = user.uid,
+                    name = cleanName,
+                    program = cleanProgram
+                )
+            }
+
+            AuthDebugLog.d(
+                "PROFILE_UPDATE online success: uid=${AuthDebugLog.uid(user.uid)}"
+            )
+            Result.success(profile)
+        } catch (error: Throwable) {
+            AuthDebugLog.e("PROFILE_UPDATE online failed", error)
+            Result.failure(error)
+        }
+    }
+
     suspend fun clearLocalSession() {
         AuthDebugLog.d(
             "LOGOUT start: currentUid=${AuthDebugLog.uid(auth.currentUser?.uid)}"
