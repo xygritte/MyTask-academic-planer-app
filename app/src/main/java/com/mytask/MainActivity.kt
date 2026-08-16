@@ -5,8 +5,8 @@ import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
-import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
@@ -184,7 +184,7 @@ private fun MyTaskApp(
     val scope = rememberCoroutineScope()
 
     LaunchedEffect(Unit) {
-        delay(800)
+        delay(500)
         minimumLoading = false
     }
 
@@ -197,7 +197,8 @@ private fun MyTaskApp(
         if (profile != null && uid != null) {
             sessionProfile = profile
             sessionUid = uid
-            if (uid == "guest") {
+
+            if (uid == "guest" && currentFirebaseUser == null) {
                 syncReady = true
 
                 val guestPromptShown = runCatching {
@@ -223,6 +224,7 @@ private fun MyTaskApp(
         }
 
         accountLoading = true
+        syncReady = false
         onlineSaveMessage = null
         shouldShowTemplatePrompt = false
 
@@ -242,10 +244,12 @@ private fun MyTaskApp(
 
         sessionProfile = immediateProfile
         sessionUid = user.uid
-        accountLoading = false
 
         if (restorePending) {
             scope.launch {
+                accountLoading = true
+                templateError = null
+
                 val cloudDataExists = runCatching {
                     cloudDataSyncRepository.syncOnLogin(user.uid)
                 }.onSuccess {
@@ -256,9 +260,6 @@ private fun MyTaskApp(
                             ?: "Data online belum dapat dimuat."
                 }.getOrDefault(false)
 
-                // Template is shown only for an account that does not yet have
-                // an academic backup in the cloud. Existing accounts with saved
-                // data never see the starter template again.
                 if (!cloudDataExists) {
                     val promptShown = runCatching {
                         templatePreferenceRepository
@@ -272,22 +273,31 @@ private fun MyTaskApp(
                 }
 
                 syncReady = true
+                accountLoading = false
             }
         } else {
+            // Persistent session: use the local Room workspace immediately.
+            // No cloud restore is repeated when the app is simply reopened.
             syncReady = true
+            accountLoading = false
             shouldShowTemplatePrompt = false
         }
     }
 
     if (minimumLoading) {
-        LoadingScreen()
+        LoadingScreen("Memulai MyTask...")
         return
     }
 
-    // Persisted DataStore profile is the local session fallback. This prevents
-    // a transient Firebase AuthState change from throwing the user back to Login.
     val activeProfile = sessionProfile ?: currentLocalProfile
-    val workspaceReady = syncReady || currentLocalProfile != null
+
+    // Authenticated users must wait for the initial cloud-restore decision.
+    // A non-null local profile alone must not bypass this loading state.
+    val isGuestSession =
+        sessionUid == "guest" && currentFirebaseUser == null
+
+    val workspaceReady =
+        syncReady || isGuestSession
 
     if (activeProfile != null && workspaceReady) {
         val templateUid =
@@ -332,6 +342,7 @@ private fun MyTaskApp(
                     sessionProfile = null
                     sessionUid = null
                     syncReady = false
+                    accountLoading = false
                     onlineSaveMessage = null
                     shouldShowTemplatePrompt = false
                 }
@@ -380,10 +391,14 @@ private fun MyTaskApp(
         return
     }
 
-    // If Firebase has a session, never render Login. Keep resolving the local
-    // workspace/profile instead.
     if (currentFirebaseUser != null) {
-        LoadingScreen()
+        LoadingScreen(
+            if (restorePending) {
+                "Menyiapkan akun dan memulihkan data..."
+            } else {
+                "Menyiapkan akun..."
+            }
+        )
         return
     }
 
