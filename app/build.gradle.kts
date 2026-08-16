@@ -125,6 +125,9 @@ dependencies {
     implementation(
         "com.github.yalantis:ucrop:2.2.11"
     )
+    implementation(
+        "androidx.appcompat:appcompat:1.7.0"
+    )
 
     // Hilt
     implementation("com.google.dagger:hilt-android:2.57")
