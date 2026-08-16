@@ -177,6 +177,10 @@ private fun MyTaskApp(
         mutableStateOf<String?>(null)
     }
 
+    var shouldShowTemplatePrompt by remember {
+        mutableStateOf(false)
+    }
+
     val scope = rememberCoroutineScope()
 
     LaunchedEffect(Unit) {
@@ -195,6 +199,14 @@ private fun MyTaskApp(
             sessionUid = uid
             if (uid == "guest") {
                 syncReady = true
+
+                val guestPromptShown = runCatching {
+                    templatePreferenceRepository
+                        .promptShown("guest")
+                        .first()
+                }.getOrDefault(false)
+
+                shouldShowTemplatePrompt = !guestPromptShown
             }
         }
     }
@@ -212,6 +224,7 @@ private fun MyTaskApp(
 
         accountLoading = true
         onlineSaveMessage = null
+        shouldShowTemplatePrompt = false
 
         val cachedUid = runCatching {
             userProfileRepository.uid.first()
@@ -233,22 +246,36 @@ private fun MyTaskApp(
 
         if (restorePending) {
             scope.launch {
-                runCatching {
+                val cloudDataExists = runCatching {
                     cloudDataSyncRepository.syncOnLogin(user.uid)
+                }.onSuccess {
+                    userProfileRepository.clearCloudRestorePending()
+                }.onFailure { error ->
+                    templateError =
+                        error.message
+                            ?: "Data online belum dapat dimuat."
+                }.getOrDefault(false)
+
+                // Template is shown only for an account that does not yet have
+                // an academic backup in the cloud. Existing accounts with saved
+                // data never see the starter template again.
+                if (!cloudDataExists) {
+                    val promptShown = runCatching {
+                        templatePreferenceRepository
+                            .promptShown(user.uid)
+                            .first()
+                    }.getOrDefault(false)
+
+                    shouldShowTemplatePrompt = !promptShown
+                } else {
+                    shouldShowTemplatePrompt = false
                 }
-                    .onSuccess {
-                        userProfileRepository.clearCloudRestorePending()
-                    }
-                    .onFailure { error ->
-                        templateError =
-                            error.message
-                                ?: "Data online belum dapat dimuat."
-                    }
 
                 syncReady = true
             }
         } else {
             syncReady = true
+            shouldShowTemplatePrompt = false
         }
     }
 
@@ -265,14 +292,6 @@ private fun MyTaskApp(
     if (activeProfile != null && workspaceReady) {
         val templateUid =
             sessionUid ?: currentFirebaseUser?.uid ?: "guest"
-
-        val promptFlow = remember(templateUid) {
-            templatePreferenceRepository.promptShown(templateUid)
-        }
-
-        val templatePromptShown by promptFlow.collectAsState(
-            initial = false
-        )
 
         Box(
             modifier = Modifier.fillMaxSize()
@@ -314,10 +333,11 @@ private fun MyTaskApp(
                     sessionUid = null
                     syncReady = false
                     onlineSaveMessage = null
+                    shouldShowTemplatePrompt = false
                 }
             )
 
-            if (!templatePromptShown && !accountLoading) {
+            if (shouldShowTemplatePrompt && !accountLoading) {
                 AcademicTemplateDialog(
                     isApplying = isApplyingTemplate,
                     errorMessage = templateError,
@@ -326,6 +346,7 @@ private fun MyTaskApp(
                             scope.launch {
                                 templatePreferenceRepository
                                     .markPromptShown(templateUid)
+                                shouldShowTemplatePrompt = false
                             }
                         }
                     },
@@ -341,6 +362,7 @@ private fun MyTaskApp(
                                     .onSuccess {
                                         templatePreferenceRepository
                                             .markPromptShown(templateUid)
+                                        shouldShowTemplatePrompt = false
                                     }
                                     .onFailure { error ->
                                         templateError =
@@ -377,6 +399,7 @@ private fun MyTaskApp(
                 sessionProfile = null
                 sessionUid = null
                 syncReady = false
+                shouldShowTemplatePrompt = false
             }
         )
         return
