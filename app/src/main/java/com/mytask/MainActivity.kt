@@ -571,6 +571,7 @@ private fun MyTaskMainContent(
             if (!isSubScreen) {
                 HorizontalPager(
                     state = pagerState,
+                    userScrollEnabled = hasCourses,
                     modifier = Modifier
                         .fillMaxSize()
                         .padding(paddingValues)
