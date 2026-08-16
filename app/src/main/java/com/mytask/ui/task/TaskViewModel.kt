@@ -75,6 +75,7 @@ class TaskViewModel @Inject constructor(
 
             if (task.isCompleted) {
                 NotificationHelper.cancelTaskNotification(appContext, task.id.toString())
+                NotificationHelper.clearOverdueNotificationState(appContext, task.id.toString())
                 ReminderScheduler.cancelTaskDeadline(appContext, task.id)
             } else {
                 ReminderScheduler.scheduleTaskDeadline(appContext, task.id, task.deadline)
@@ -89,6 +90,7 @@ class TaskViewModel @Inject constructor(
         viewModelScope.launch {
             repository.deleteTask(task)
             NotificationHelper.cancelTaskNotification(appContext, task.id.toString())
+            NotificationHelper.clearOverdueNotificationState(appContext, task.id.toString())
             ReminderScheduler.cancelTaskDeadline(appContext, task.id)
             ReminderScheduler.syncToday(appContext)
         }
@@ -101,8 +103,10 @@ class TaskViewModel @Inject constructor(
 
             if (updatedTask.isCompleted) {
                 NotificationHelper.cancelTaskNotification(appContext, task.id.toString())
+                NotificationHelper.clearOverdueNotificationState(appContext, task.id.toString())
                 ReminderScheduler.cancelTaskDeadline(appContext, task.id)
             } else {
+                NotificationHelper.clearOverdueNotificationState(appContext, task.id.toString())
                 ReminderScheduler.scheduleTaskDeadline(appContext, task.id, updatedTask.deadline)
             }
 
