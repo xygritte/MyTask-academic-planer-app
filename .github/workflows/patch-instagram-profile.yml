@@ -1,0 +1,55 @@
+name: Patch Instagram Profile Link
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Patch profile screen
+        run: |
+          python3 <<'PY'
+          from pathlib import Path
+
+          path = Path("app/src/main/java/com/mytask/ui/profile/ProfileScreen.kt")
+          text = path.read_text(encoding="utf-8")
+
+          if "https://www.instagram.com/ramadhani.frqn" in text:
+              print("Instagram link already present; nothing to do.")
+              raise SystemExit(0)
+
+          if "import android.content.Intent" not in text:
+              text = text.replace(
+                  "import android.content.Context\n",
+                  "import android.content.Context\nimport android.content.Intent\n",
+                  1,
+              )
+
+          marker = '''            AboutRow(\n                icon = Icons.Default.Person,\n                label = "MyTask Academic Planner\\napp by Furqon Ramadhani"\n            )\n\n            Spacer(Modifier.height(24.dp))'''
+
+          addition = '''            AboutRow(\n                icon = Icons.Default.Person,\n                label = "MyTask Academic Planner\\napp by Furqon Ramadhani"\n            )\n\n            ProfileMenuCard(\n                icon = Icons.Default.Person,\n                title = "Instagram",\n                description = "@ramadhani.frqn",\n                onClick = {\n                    context.startActivity(\n                        Intent(\n                            Intent.ACTION_VIEW,\n                            Uri.parse("https://www.instagram.com/ramadhani.frqn")\n                        )\n                    )\n                }\n            )\n\n            Spacer(Modifier.height(24.dp))'''
+
+          if marker not in text:
+              raise SystemExit("Expected AboutRow marker was not found; refusing to modify the file.")
+
+          path.write_text(text.replace(marker, addition, 1), encoding="utf-8")
+          print("Instagram profile link added.")
+          PY
+
+      - name: Commit patch and remove one-time workflow
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add app/src/main/java/com/mytask/ui/profile/ProfileScreen.kt .github/workflows/patch-instagram-profile.yml
+          git commit -m "Add Instagram profile link"
+          git rm .github/workflows/patch-instagram-profile.yml
+          git commit -m "Remove one-time Instagram profile patch workflow"
+          git push
