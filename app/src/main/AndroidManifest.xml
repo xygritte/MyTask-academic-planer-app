@@ -14,8 +14,8 @@
         android:allowBackup="true"
         android:label="MyTask"
         android:supportsRtl="true"
-        android:roundIcon="@mipmap/ic_launcher_round"
-        android:icon="@mipmap/ic_launcher"
+        android:roundIcon="@mipmap/mytask_background"
+        android:icon="@mipmap/mytask_background"
         android:theme="@style/Theme.MyTask">
 
         <receiver
