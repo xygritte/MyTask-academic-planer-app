@@ -198,8 +198,8 @@ private fun MyTaskApp(
         }
     }
 
-    // Firebase authentication itself is persistent across normal app restarts.
-    // We only restore cloud data when the explicit-login flow marked it pending.
+    // Firebase authentication is persistent across normal app restarts.
+    // Cloud data is downloaded only after an explicit login/registration flow.
     LaunchedEffect(currentFirebaseUser?.uid, restorePending) {
         val user = currentFirebaseUser
 
@@ -241,8 +241,7 @@ private fun MyTaskApp(
                     cloudDataSyncRepository.syncOnLogin(user.uid)
                 }
                     .onSuccess {
-                        userProfileRepository
-                            .clearCloudRestorePending()
+                        userProfileRepository.clearCloudRestorePending()
                     }
                     .onFailure { error ->
                         templateError =
@@ -289,29 +288,27 @@ private fun MyTaskApp(
                 onSaveDataOnline = {
                     val user = currentFirebaseUser
 
-                    if (user == null || isSavingOnline) {
-                        return@MyTaskMainContent
-                    }
+                    if (user != null && !isSavingOnline) {
+                        scope.launch {
+                            isSavingOnline = true
+                            onlineSaveMessage = null
 
-                    scope.launch {
-                        isSavingOnline = true
-                        onlineSaveMessage = null
+                            runCatching {
+                                cloudDataSyncRepository
+                                    .uploadCurrentData(user.uid)
+                            }
+                                .onSuccess {
+                                    onlineSaveMessage =
+                                        "Data berhasil disimpan ke online."
+                                }
+                                .onFailure { error ->
+                                    onlineSaveMessage =
+                                        error.message
+                                            ?: "Gagal menyimpan data ke online."
+                                }
 
-                        runCatching {
-                            cloudDataSyncRepository
-                                .uploadCurrentData(user.uid)
+                            isSavingOnline = false
                         }
-                            .onSuccess {
-                                onlineSaveMessage =
-                                    "Data berhasil disimpan ke online."
-                            }
-                            .onFailure { error ->
-                                onlineSaveMessage =
-                                    error.message
-                                        ?: "Gagal menyimpan data ke online."
-                            }
-
-                        isSavingOnline = false
                     }
                 },
                 onLoggedOut = {
@@ -376,11 +373,6 @@ private fun MyTaskApp(
     }
 
     if (currentLocalProfile != null) {
-        // Guest/local profile is the only non-Firebase session.
-        sessionProfile = currentLocalProfile
-        sessionUid = "guest"
-        syncReady = true
-
         MyTaskMainContent(
             profile = currentLocalProfile,
             canSaveOnline = false,
