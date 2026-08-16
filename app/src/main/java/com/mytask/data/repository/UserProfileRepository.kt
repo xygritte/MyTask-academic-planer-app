@@ -9,7 +9,6 @@ import androidx.datastore.preferences.preferencesDataStore
 import com.mytask.debug.AuthDebugLog
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.map
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -44,15 +43,13 @@ class UserProfileRepository @Inject constructor(
 
     val profile: Flow<UserProfile?> =
         context.userProfileDataStore.data.map { preferences: Preferences ->
-            val name =
-                preferences[NAME_KEY]
-                    ?.trim()
-                    .orEmpty()
+            val name = preferences[NAME_KEY]
+                ?.trim()
+                .orEmpty()
 
-            val program =
-                preferences[PROGRAM_KEY]
-                    ?.trim()
-                    .orEmpty()
+            val program = preferences[PROGRAM_KEY]
+                ?.trim()
+                .orEmpty()
 
             if (name.isBlank() || program.isBlank()) {
                 null
@@ -72,19 +69,18 @@ class UserProfileRepository @Inject constructor(
         }
 
     /**
-     * Emits only the start signal for a cloud restore.
+     * Always emits the current persisted restore flag.
      *
-     * The false value is intentionally not emitted after
-     * clearCloudRestorePending(). This prevents MainActivity from treating the
-     * completion of a restore as a brand-new authentication-state change and
-     * hiding the onboarding template dialog immediately after it appears.
-     * The persisted DataStore value is still cleared normally, so a subsequent
-     * app launch/login starts from false again.
+     * This must NOT filter out false values because MainActivity reads the
+     * value with first(). Filtering false would make first() wait forever on
+     * a normal app reopen after a previous restore had already completed.
+     *
+     * Restore is still triggered only once for a new authenticated session:
+     * MainActivity is keyed by Firebase UID, not by this flag.
      */
     val restorePending: Flow<Boolean> =
         context.userProfileDataStore.data
             .map { preferences -> preferences[RESTORE_PENDING_KEY] ?: false }
-            .filter { it }
 
     suspend fun saveProfile(
         uid: String,
