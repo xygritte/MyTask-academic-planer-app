@@ -32,15 +32,14 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.zIndex
 import androidx.core.content.ContextCompat
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
+import com.mytask.data.repository.FirebaseAuthRepository
 import com.mytask.data.repository.TemplateDataImporter
 import com.mytask.data.repository.TemplatePreferenceRepository
 import com.mytask.data.repository.UserProfile
-import com.mytask.data.repository.UserProfileRepository
 import com.mytask.navigation.NavGraph
 import com.mytask.navigation.Screen
 import com.mytask.ui.calendar.CalendarScreen
@@ -54,14 +53,16 @@ import com.mytask.ui.task.TaskListScreen
 import com.mytask.ui.template.AcademicTemplateDialog
 import com.mytask.ui.theme.MyTaskTheme
 import dagger.hilt.android.AndroidEntryPoint
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.flow.collectLatest
-import androidx.compose.runtime.produceState
 import javax.inject.Inject
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.launch
 
 @AndroidEntryPoint
 class MainActivity : ComponentActivity() {
+
+    @Inject
+    lateinit var firebaseAuthRepository: FirebaseAuthRepository
 
     @Inject
     lateinit var templateDataImporter: TemplateDataImporter
@@ -83,8 +84,8 @@ class MainActivity : ComponentActivity() {
         setContent {
             MyTaskTheme {
                 MyTaskApp(
-                    templateDataImporter =
-                        templateDataImporter
+                    authRepository = firebaseAuthRepository,
+                    templateDataImporter = templateDataImporter
                 )
             }
         }
@@ -109,35 +110,62 @@ class MainActivity : ComponentActivity() {
 
 @Composable
 private fun MyTaskApp(
+    authRepository: FirebaseAuthRepository,
     templateDataImporter: TemplateDataImporter
 ) {
 
-    val context = LocalContext.current.applicationContext
-
-    val profileRepository = remember(context) {
-        UserProfileRepository(context)
+    val templatePreferenceRepository = remember {
+        TemplatePreferenceRepository(
+            context = androidx.compose.ui.platform.LocalContext.current.applicationContext
+        )
     }
 
-    val templatePreferenceRepository = remember(context) {
-        TemplatePreferenceRepository(context)
+    val firebaseUser by
+        authRepository.authState.collectAsState(
+            initial = authRepository.currentUser
+        )
+
+    var profile by remember {
+        mutableStateOf<UserProfile?>(null)
     }
 
-    val profileState = produceState<Pair<Boolean, UserProfile?>>(
-        initialValue = false to null,
-        key1 = profileRepository
-    ) {
-        profileRepository.profile.collectLatest { profile ->
-            value = true to profile
-        }
+    var profileLoading by remember {
+        mutableStateOf(true)
     }
-
-    val templatePromptShown by
-        templatePreferenceRepository.promptShown
-            .collectAsState(initial = false)
 
     var minimumLoading by remember {
         mutableStateOf(true)
     }
+
+    LaunchedEffect(firebaseUser?.uid) {
+
+        profileLoading = true
+
+        profile = if (firebaseUser == null) {
+            null
+        } else {
+            authRepository
+                .reloadProfile()
+                .getOrNull()
+        }
+
+        profileLoading = false
+    }
+
+    LaunchedEffect(Unit) {
+        delay(800)
+        minimumLoading = false
+    }
+
+    val promptFlow = remember(firebaseUser?.uid) {
+        firebaseUser?.uid?.let { uid ->
+            templatePreferenceRepository
+                .promptShown(uid)
+        } ?: flowOf(true)
+    }
+
+    val templatePromptShown by
+        promptFlow.collectAsState(initial = true)
 
     var isApplyingTemplate by remember {
         mutableStateOf(false)
@@ -149,21 +177,20 @@ private fun MyTaskApp(
 
     val scope = rememberCoroutineScope()
 
-    LaunchedEffect(Unit) {
-        delay(800)
-        minimumLoading = false
-    }
-
-    val profileLoaded = profileState.value.first
-    val profile = profileState.value.second
-
-    if (minimumLoading || !profileLoaded) {
+    if (minimumLoading || profileLoading) {
         LoadingScreen()
         return
     }
 
+    if (firebaseUser == null) {
+        LoginScreen(
+            authRepository = authRepository
+        )
+        return
+    }
+
     if (profile == null) {
-        LoginScreen(repository = profileRepository)
+        LoadingScreen()
         return
     }
 
@@ -172,25 +199,29 @@ private fun MyTaskApp(
     ) {
 
         MyTaskMainContent(
-            profile = profile,
-            repository = profileRepository
+            profile = profile!!,
+            authRepository = authRepository
         )
 
         if (!templatePromptShown) {
+
             AcademicTemplateDialog(
                 isApplying = isApplyingTemplate,
                 errorMessage = templateError,
+
                 onSkip = {
                     if (!isApplyingTemplate) {
                         scope.launch {
                             templatePreferenceRepository
-                                .markPromptShown()
+                                .markPromptShown(firebaseUser.uid)
                         }
                     }
                 },
+
                 onApply = {
                     if (!isApplyingTemplate) {
                         scope.launch {
+
                             isApplyingTemplate = true
                             templateError = null
 
@@ -199,7 +230,7 @@ private fun MyTaskApp(
                                     .importTemplate()
                             }.onSuccess {
                                 templatePreferenceRepository
-                                    .markPromptShown()
+                                    .markPromptShown(firebaseUser.uid)
                             }.onFailure { error ->
                                 templateError =
                                     error.message
@@ -218,7 +249,7 @@ private fun MyTaskApp(
 @Composable
 private fun MyTaskMainContent(
     profile: UserProfile,
-    repository: UserProfileRepository
+    authRepository: FirebaseAuthRepository
 ) {
 
     val navController = rememberNavController()
@@ -464,10 +495,9 @@ private fun MyTaskMainContent(
                                         Screen.Backup.route
                                     )
                                 },
-                                onEditProfile = {
-                                    scope.launch {
-                                        repository.clearProfile()
-                                    }
+                                onEditProfile = {},
+                                onLogout = {
+                                    authRepository.signOut()
                                 }
                             )
                         }
