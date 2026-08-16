@@ -20,11 +20,13 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowForwardIos
 import androidx.compose.material.icons.filled.Cloud
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Logout
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -32,7 +34,6 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -49,7 +50,8 @@ fun ProfileScreen(
     onBack: () -> Unit = {},
     onNotificationSettings: () -> Unit = {},
     onBackupData: () -> Unit = {},
-    onEditProfile: () -> Unit = {}
+    onEditProfile: () -> Unit = {},
+    onLogout: () -> Unit = {}
 ) {
 
     Scaffold(
@@ -180,6 +182,14 @@ fun ProfileScreen(
                 onClick = onBackupData
             )
 
+            ProfileMenuCard(
+                icon = Icons.Default.Logout,
+                title = "Keluar",
+                description = "Keluar dari akun MyTask di perangkat ini.",
+                onClick = onLogout,
+                destructive = true
+            )
+
             Spacer(Modifier.height(4.dp))
 
             HorizontalDivider(
@@ -205,8 +215,27 @@ private fun ProfileMenuCard(
     icon: androidx.compose.ui.graphics.vector.ImageVector,
     title: String,
     description: String,
-    onClick: () -> Unit
+    onClick: () -> Unit,
+    destructive: Boolean = false
 ) {
+
+    val accent = if (destructive) {
+        MaterialTheme.colorScheme.error
+    } else {
+        MaterialTheme.colorScheme.primary
+    }
+
+    val iconBackground = if (destructive) {
+        MaterialTheme.colorScheme.errorContainer
+    } else {
+        MaterialTheme.colorScheme.secondaryContainer
+    }
+
+    val iconOnBackground = if (destructive) {
+        MaterialTheme.colorScheme.onErrorContainer
+    } else {
+        MaterialTheme.colorScheme.primary
+    }
 
     Card(
         modifier = Modifier
@@ -232,12 +261,12 @@ private fun ProfileMenuCard(
             Surface(
                 modifier = Modifier.size(44.dp),
                 shape = RoundedCornerShape(12.dp),
-                color = MaterialTheme.colorScheme.secondaryContainer
+                color = iconBackground
             ) {
                 Icon(
                     imageVector = icon,
                     contentDescription = null,
-                    tint = MaterialTheme.colorScheme.primary,
+                    tint = iconOnBackground,
                     modifier = Modifier.padding(10.dp)
                 )
             }
@@ -250,7 +279,12 @@ private fun ProfileMenuCard(
                 Text(
                     text = title,
                     style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.SemiBold
+                    fontWeight = FontWeight.SemiBold,
+                    color = if (destructive) {
+                        accent
+                    } else {
+                        MaterialTheme.colorScheme.onSurface
+                    }
                 )
 
                 Spacer(Modifier.height(2.dp))
