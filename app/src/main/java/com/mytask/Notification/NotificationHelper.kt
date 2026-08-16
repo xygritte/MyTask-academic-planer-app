@@ -1,6 +1,7 @@
 package com.mytask.Notification
 
 import android.Manifest
+import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
@@ -27,8 +28,7 @@ object NotificationHelper {
     fun createChannels(context: Context) {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
 
-        val manager =
-            context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
 
         val taskChannel = NotificationChannel(
             TASK_CHANNEL_ID,
@@ -83,42 +83,23 @@ object NotificationHelper {
             .setOnlyAlertOnce(true)
             .build()
 
-        NotificationManagerCompat
-            .from(context)
-            .notify(ACTIVE_TASKS_NOTIFICATION_ID, notification)
-
+        NotificationManagerCompat.from(context).notify(ACTIVE_TASKS_NOTIFICATION_ID, notification)
         AppDebugLog.d("NOTIFICATION", "posted active-task notification")
     }
 
     fun cancelActiveTasksNotification(context: Context) {
-        NotificationManagerCompat
-            .from(context)
-            .cancel(ACTIVE_TASKS_NOTIFICATION_ID)
+        NotificationManagerCompat.from(context).cancel(ACTIVE_TASKS_NOTIFICATION_ID)
         AppDebugLog.d("NOTIFICATION", "cancelled active-task notification")
     }
 
-    fun showTaskNotification(
-        context: Context,
-        taskId: String,
-        title: String,
-        message: String
-    ) {
-        showTaskNotificationInternal(
-            context = context,
-            taskId = taskId,
-            title = title,
-            message = message,
-            overdue = false
-        )
+    fun showTaskNotification(context: Context, taskId: String, title: String, message: String) {
+        showTaskNotificationInternal(context, taskId, title, message, overdue = false)
     }
 
     /**
-     * Shows an overdue notification at most once for a task/deadline pair.
-     * Re-running the daily worker or changing the reminder-days setting must
-     * not make the same overdue notification alert again.
-     *
-     * @return true when a new notification was posted, false when it was
-     * already posted for the same deadline or notifications are unavailable.
+     * Shows an overdue notification at most once per task/deadline pair while
+     * still allowing the notification to be recreated when Android or the app
+     * has cancelled the existing notification.
      */
     fun showOverdueTaskNotification(
         context: Context,
@@ -135,10 +116,14 @@ object NotificationHelper {
             return false
         }
 
-        if (hasShownOverdueNotification(context, taskId, deadlineMillis)) {
+        val notificationId = taskNotificationId(taskId)
+        val alreadyShown = hasShownOverdueNotification(context, taskId, deadlineMillis)
+        val currentlyPosted = isNotificationActive(context, notificationId)
+
+        if (alreadyShown && currentlyPosted) {
             AppDebugLog.d(
                 "NOTIFICATION",
-                "overdue notification suppressed taskId=$taskId deadline=$deadlineMillis alreadyShown=true"
+                "overdue notification suppressed taskId=$taskId deadline=$deadlineMillis alreadyShown=true active=true"
             )
             return false
         }
@@ -152,6 +137,11 @@ object NotificationHelper {
         )
 
         markOverdueNotificationShown(context, taskId, deadlineMillis)
+
+        AppDebugLog.d(
+            "NOTIFICATION",
+            "overdue notification posted taskId=$taskId deadline=$deadlineMillis previouslyShown=$alreadyShown activeBefore=$currentlyPosted"
+        )
         return true
     }
 
@@ -210,9 +200,7 @@ object NotificationHelper {
             builder.setCategory(NotificationCompat.CATEGORY_REMINDER)
         }
 
-        NotificationManagerCompat
-            .from(context)
-            .notify(notificationId, builder.build())
+        NotificationManagerCompat.from(context).notify(notificationId, builder.build())
 
         AppDebugLog.d(
             "NOTIFICATION",
@@ -221,9 +209,7 @@ object NotificationHelper {
     }
 
     fun cancelTaskNotification(context: Context, taskId: String) {
-        NotificationManagerCompat
-            .from(context)
-            .cancel(taskNotificationId(taskId))
+        NotificationManagerCompat.from(context).cancel(taskNotificationId(taskId))
         AppDebugLog.d("NOTIFICATION", "cancelled task notification taskId=$taskId")
     }
 
@@ -267,10 +253,7 @@ object NotificationHelper {
             .setOngoing(true)
             .build()
 
-        NotificationManagerCompat
-            .from(context)
-            .notify(notificationId, notification)
-
+        NotificationManagerCompat.from(context).notify(notificationId, notification)
         AppDebugLog.d(
             "NOTIFICATION",
             "posted schedule notification scheduleId=$scheduleId notificationId=$notificationId"
@@ -278,29 +261,18 @@ object NotificationHelper {
     }
 
     fun cancelAllAppNotifications(context: Context) {
-        NotificationManagerCompat
-            .from(context)
-            .cancelAll()
+        NotificationManagerCompat.from(context).cancelAll()
         AppDebugLog.d("NOTIFICATION", "cancelled all app notifications")
     }
 
-    private fun hasShownOverdueNotification(
-        context: Context,
-        taskId: String,
-        deadlineMillis: Long
-    ): Boolean {
+    private fun hasShownOverdueNotification(context: Context, taskId: String, deadlineMillis: Long): Boolean {
         val stored = context
             .getSharedPreferences(OVERDUE_STATE_PREFS, Context.MODE_PRIVATE)
             .getLong(overdueStateKey(taskId), Long.MIN_VALUE)
-
         return stored == deadlineMillis
     }
 
-    private fun markOverdueNotificationShown(
-        context: Context,
-        taskId: String,
-        deadlineMillis: Long
-    ) {
+    private fun markOverdueNotificationShown(context: Context, taskId: String, deadlineMillis: Long) {
         context
             .getSharedPreferences(OVERDUE_STATE_PREFS, Context.MODE_PRIVATE)
             .edit()
@@ -308,8 +280,17 @@ object NotificationHelper {
             .apply()
     }
 
-    private fun overdueStateKey(taskId: String): String =
-        "$OVERDUE_STATE_PREFIX$taskId"
+    private fun overdueStateKey(taskId: String): String = "$OVERDUE_STATE_PREFIX$taskId"
+
+    private fun isNotificationActive(context: Context, notificationId: Int): Boolean {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) {
+            // On older Android versions there is no reliable active-notification query.
+            return false
+        }
+
+        val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        return manager.activeNotifications.any { it.id == notificationId }
+    }
 
     private fun taskNotificationId(taskId: String): Int {
         val hash = abs(taskId.hashCode())
@@ -333,8 +314,6 @@ object NotificationHelper {
             }
         }
 
-        return NotificationManagerCompat
-            .from(context)
-            .areNotificationsEnabled()
+        return NotificationManagerCompat.from(context).areNotificationsEnabled()
     }
 }
