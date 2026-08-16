@@ -152,7 +152,7 @@ dependencies {
 
     // WorkManager
     implementation(
-        "androidx.work:work-runtime-ktx:2.9.1"
+        "androidx.work:work-runtime-ktx:2.11.2"
     )
 
     // Testing
