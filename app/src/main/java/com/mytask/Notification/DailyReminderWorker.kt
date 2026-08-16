@@ -7,7 +7,6 @@ import androidx.work.WorkerParameters
 import com.mytask.debug.AppDebugLog
 import com.mytask.data.local.MyTaskDatabase
 import com.mytask.data.local.entity.TaskEntity
-import com.mytask.data.local.toDisplayTime
 import com.mytask.data.repository.SettingsRepository
 import kotlinx.coroutines.flow.first
 import java.util.Calendar
@@ -29,14 +28,22 @@ class DailyReminderWorker(
             val tasks = database.taskDao().getAllTasks().first()
             val reminderDays = settingsRepository.taskReminderDays.first()
             val activeTaskNotificationEnabled = settingsRepository.activeTaskNotification.first()
-            AppDebugLog.d("NOTIFICATION", "worker data tasks=${tasks.size} reminderDays=$reminderDays activeTasksNotification=$activeTaskNotificationEnabled")
+            val schedules = database.scheduleDao().getAllSchedulesSnapshot()
+
+            AppDebugLog.d(
+                "NOTIFICATION",
+                "worker data tasks=${tasks.size} schedules=${schedules.size} reminderDays=$reminderDays activeTasksNotification=$activeTaskNotificationEnabled"
+            )
 
             if (activeTaskNotificationEnabled) checkActiveTasks(tasks)
             else NotificationHelper.cancelActiveTasksNotification(applicationContext)
 
             checkDeadlineTasks(tasks, reminderDays)
             ReminderScheduler.rescheduleAllTaskDeadlines(applicationContext, tasks)
-            checkTodaySchedules(database)
+
+            // Do not post schedule notifications here. This worker only keeps the
+            // one-shot two-hour alarms registered for the next class occurrence.
+            ReminderScheduler.rescheduleAllScheduleReminders(applicationContext, schedules)
             ReminderScheduler.scheduleNextMidnight(applicationContext)
 
             AppDebugLog.d("NOTIFICATION", "worker success")
@@ -128,29 +135,6 @@ class DailyReminderWorker(
         task.description.takeIf { it.isNotBlank() }?.let { append("\n\n").append(it) }
         append("\n\nPrioritas: ").append(getPriorityText(task.priority))
         append("\n\nTap untuk membuka tugas.")
-    }
-
-    private suspend fun checkTodaySchedules(database: MyTaskDatabase) {
-        val today = Calendar.getInstance().get(Calendar.DAY_OF_WEEK)
-        val schedules = database.scheduleDao().getSchedulesByDay(today).first()
-        if (schedules.isEmpty()) return
-
-        val courses = database.courseDao().getAllCourses().first()
-        schedules.sortedBy { it.startMinutes }.forEach { schedule ->
-            val course = courses.find { it.id == schedule.courseId }
-            val message = buildString {
-                append("${schedule.startMinutes.toDisplayTime()} - ${schedule.endMinutes.toDisplayTime()}\n")
-                append(course?.name ?: "Mata Kuliah")
-                if (schedule.room.isNotBlank()) append("\nRuangan: ${schedule.room}")
-                append("\n\nTap untuk konfirmasi.")
-            }
-            NotificationHelper.showScheduleNotification(
-                applicationContext,
-                schedule.id.toString(),
-                "🕒 Jadwal Kuliah",
-                message
-            )
-        }
     }
 
     private fun getDeadlineText(now: Calendar, deadline: Date): String {
