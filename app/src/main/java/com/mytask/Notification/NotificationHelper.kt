@@ -22,6 +22,8 @@ object NotificationHelper {
     private const val TASK_CHANNEL_ID = "task_reminder"
     private const val SCHEDULE_CHANNEL_ID = "schedule_reminder"
     private const val ACTIVE_TASKS_NOTIFICATION_ID = 4000
+    private const val TASK_NOTIFICATION_ID_BASE = 2000
+    private const val SCHEDULE_NOTIFICATION_ID_BASE = 3000
     private const val OVERDUE_STATE_PREFS = "mytask_overdue_notification_state"
     private const val OVERDUE_STATE_PREFIX = "shown_"
 
@@ -96,11 +98,6 @@ object NotificationHelper {
         showTaskNotificationInternal(context, taskId, title, message, overdue = false)
     }
 
-    /**
-     * Shows an overdue notification at most once per task/deadline pair while
-     * still allowing the notification to be recreated when Android or the app
-     * has cancelled the existing notification.
-     */
     fun showOverdueTaskNotification(
         context: Context,
         taskId: String,
@@ -283,23 +280,19 @@ object NotificationHelper {
     private fun overdueStateKey(taskId: String): String = "$OVERDUE_STATE_PREFIX$taskId"
 
     private fun isNotificationActive(context: Context, notificationId: Int): Boolean {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) {
-            // On older Android versions there is no reliable active-notification query.
-            return false
-        }
-
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) return false
         val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         return manager.activeNotifications.any { it.id == notificationId }
     }
 
     private fun taskNotificationId(taskId: String): Int {
         val hash = abs(taskId.hashCode())
-        return if (hash == 0) 2000 else hash
+        return TASK_NOTIFICATION_ID_BASE + (hash % 100000)
     }
 
     private fun scheduleNotificationId(scheduleId: String): Int {
         val hash = abs(scheduleId.hashCode())
-        return if (hash == 0) 3000 else hash
+        return SCHEDULE_NOTIFICATION_ID_BASE + (hash % 100000)
     }
 
     private fun canNotify(context: Context): Boolean {
@@ -309,9 +302,7 @@ object NotificationHelper {
                     context,
                     Manifest.permission.POST_NOTIFICATIONS
                 ) != PackageManager.PERMISSION_GRANTED
-            ) {
-                return false
-            }
+            ) return false
         }
 
         return NotificationManagerCompat.from(context).areNotificationsEnabled()
