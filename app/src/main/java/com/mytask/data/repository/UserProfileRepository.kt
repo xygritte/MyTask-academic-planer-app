@@ -6,6 +6,7 @@ import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
+import com.mytask.debug.AuthDebugLog
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
@@ -84,6 +85,9 @@ class UserProfileRepository @Inject constructor(
             preferences[NAME_KEY] = name.trim()
             preferences[PROGRAM_KEY] = program.trim()
         }
+        AuthDebugLog.d(
+            "PROFILE_STORE save: uid=${AuthDebugLog.uid(uid)} namePresent=${name.isNotBlank()} programPresent=${program.isNotBlank()}"
+        )
     }
 
     suspend fun saveGuestProfile(
@@ -95,18 +99,21 @@ class UserProfileRepository @Inject constructor(
             name = name,
             program = program
         )
+        AuthDebugLog.d("PROFILE_STORE guest profile saved")
     }
 
     suspend fun markCloudRestorePending() {
         context.userProfileDataStore.edit { preferences ->
             preferences[RESTORE_PENDING_KEY] = true
         }
+        AuthDebugLog.d("PROFILE_STORE restorePending=true")
     }
 
     suspend fun clearCloudRestorePending() {
         context.userProfileDataStore.edit { preferences ->
             preferences[RESTORE_PENDING_KEY] = false
         }
+        AuthDebugLog.d("PROFILE_STORE restorePending=false")
     }
 
     suspend fun clearProfile() {
@@ -116,5 +123,6 @@ class UserProfileRepository @Inject constructor(
             preferences.remove(PROGRAM_KEY)
             preferences.remove(RESTORE_PENDING_KEY)
         }
+        AuthDebugLog.d("PROFILE_STORE clearProfile")
     }
 }
