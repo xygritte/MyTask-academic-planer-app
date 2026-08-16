@@ -1,0 +1,68 @@
+name: Patch immediate logout
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Patch logout state and remove workflow
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path('app/src/main/java/com/mytask/MainActivity.kt')
+          text = path.read_text(encoding='utf-8')
+
+          old = '''        if (user == null) {
+            accountLoading = false
+            restorePendingState = false
+            if (sessionUid == "guest") syncReady = true
+            return@LaunchedEffect
+        }
+'''
+
+          new = '''        if (user == null) {
+            accountLoading = false
+            restorePendingState = false
+
+            if (sessionUid == "guest") {
+                syncReady = true
+            } else {
+                // Firebase sign-out means the authenticated workspace is over.
+                // Clear Compose session state immediately so the login screen appears
+                // without requiring an Activity/app restart.
+                sessionProfile = null
+                sessionUid = null
+                syncReady = false
+                shouldShowTemplatePrompt = false
+                templateError = null
+                onlineSaveMessage = null
+            }
+            return@LaunchedEffect
+        }
+'''
+
+          if old not in text:
+              raise SystemExit('Expected logout state block was not found')
+
+          path.write_text(text.replace(old, new, 1), encoding='utf-8')
+          PY
+
+          rm .github/workflows/patch-immediate-logout.yml
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add app/src/main/java/com/mytask/MainActivity.kt .github/workflows/patch-immediate-logout.yml
+          git commit -m "Fix immediate return to login after logout"
+          git push
