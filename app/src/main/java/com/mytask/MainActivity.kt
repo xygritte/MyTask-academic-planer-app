@@ -60,6 +60,7 @@ import javax.inject.Inject
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.debounce
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
 @AndroidEntryPoint
@@ -178,7 +179,6 @@ private fun MyTaskApp(
         accountProfile = null
 
         if (user != null) {
-            // Jangan mengunci UI sambil menunggu Firestore.
             val local = localProfile
             val immediateProfile =
                 local?.takeIf {
@@ -369,9 +369,7 @@ private fun MyTaskMainContent(
                     NavigationBarItem(
                         selected = currentPage == 0,
                         onClick = {
-                            scope.launch {
-                                pagerState.animateScrollToPage(0)
-                            }
+                            scope.launch { pagerState.animateScrollToPage(0) }
                         },
                         icon = {
                             Icon(
@@ -385,9 +383,7 @@ private fun MyTaskMainContent(
                     NavigationBarItem(
                         selected = currentPage == 1,
                         onClick = {
-                            scope.launch {
-                                pagerState.animateScrollToPage(1)
-                            }
+                            scope.launch { pagerState.animateScrollToPage(1) }
                         },
                         icon = {
                             Icon(
@@ -401,9 +397,7 @@ private fun MyTaskMainContent(
                     NavigationBarItem(
                         selected = currentPage == 2,
                         onClick = {
-                            scope.launch {
-                                pagerState.animateScrollToPage(2)
-                            }
+                            scope.launch { pagerState.animateScrollToPage(2) }
                         },
                         icon = {
                             Icon(
@@ -417,9 +411,7 @@ private fun MyTaskMainContent(
                     NavigationBarItem(
                         selected = currentPage == 3,
                         onClick = {
-                            scope.launch {
-                                pagerState.animateScrollToPage(3)
-                            }
+                            scope.launch { pagerState.animateScrollToPage(3) }
                         },
                         icon = {
                             Icon(
@@ -433,9 +425,7 @@ private fun MyTaskMainContent(
                     NavigationBarItem(
                         selected = currentPage == 4,
                         onClick = {
-                            scope.launch {
-                                pagerState.animateScrollToPage(4)
-                            }
+                            scope.launch { pagerState.animateScrollToPage(4) }
                         },
                         icon = {
                             Icon(
@@ -449,9 +439,7 @@ private fun MyTaskMainContent(
                     NavigationBarItem(
                         selected = currentPage == 5,
                         onClick = {
-                            scope.launch {
-                                pagerState.animateScrollToPage(5)
-                            }
+                            scope.launch { pagerState.animateScrollToPage(5) }
                         },
                         icon = {
                             Icon(
@@ -465,9 +453,7 @@ private fun MyTaskMainContent(
             }
         }
     ) { paddingValues ->
-        Box(
-            modifier = Modifier.fillMaxSize()
-        ) {
+        Box(Modifier.fillMaxSize()) {
             NavGraph(
                 navController = navController,
                 paddingValues = paddingValues,
@@ -486,107 +472,73 @@ private fun MyTaskMainContent(
                     beyondViewportPageCount = 1
                 ) { page ->
                     when (page) {
-                        0 -> {
-                            DashboardScreen(
-                                onCoursesClick = {
-                                    scope.launch {
-                                        pagerState.animateScrollToPage(4)
-                                    }
-                                },
-                                onTasksClick = {
-                                    scope.launch {
-                                        pagerState.animateScrollToPage(1)
-                                    }
-                                },
-                                onScheduleClick = {
-                                    scope.launch {
-                                        pagerState.animateScrollToPage(2)
-                                    }
-                                },
-                                onCalendarClick = {
-                                    scope.launch {
-                                        pagerState.animateScrollToPage(3)
-                                    }
-                                }
-                            )
-                        }
+                        0 -> DashboardScreen(
+                            onCoursesClick = {
+                                scope.launch { pagerState.animateScrollToPage(4) }
+                            },
+                            onTasksClick = {
+                                scope.launch { pagerState.animateScrollToPage(1) }
+                            },
+                            onScheduleClick = {
+                                scope.launch { pagerState.animateScrollToPage(2) }
+                            },
+                            onCalendarClick = {
+                                scope.launch { pagerState.animateScrollToPage(3) }
+                            }
+                        )
 
-                        1 -> {
-                            TaskListScreen(
-                                onAddTask = {
-                                    navController.navigate(
-                                        "add_task?taskId=-1"
-                                    )
-                                },
-                                onEditTask = { id ->
-                                    navController.navigate(
-                                        "add_task?taskId=$id"
-                                    )
-                                }
-                            )
-                        }
+                        1 -> TaskListScreen(
+                            onAddTask = {
+                                navController.navigate("add_task?taskId=-1")
+                            },
+                            onEditTask = { id ->
+                                navController.navigate("add_task?taskId=$id")
+                            }
+                        )
 
                         2 -> ScheduleScreen()
 
-                        3 -> {
-                            CalendarScreen(
-                                onBack = {
-                                    scope.launch {
-                                        if (currentPage > 0) {
-                                            pagerState.animateScrollToPage(
-                                                currentPage - 1
-                                            )
-                                        }
+                        3 -> CalendarScreen(
+                            onBack = {
+                                scope.launch {
+                                    if (currentPage > 0) {
+                                        pagerState.animateScrollToPage(currentPage - 1)
                                     }
                                 }
-                            )
-                        }
+                            }
+                        )
 
-                        4 -> {
-                            CourseListScreen(
-                                onAddCourse = {
-                                    navController.navigate(
-                                        "add_course?courseId=-1"
-                                    )
-                                },
-                                onEditCourse = { id ->
-                                    navController.navigate(
-                                        "add_course?courseId=$id"
-                                    )
-                                }
-                            )
-                        }
+                        4 -> CourseListScreen(
+                            onAddCourse = {
+                                navController.navigate("add_course?courseId=-1")
+                            },
+                            onEditCourse = { id ->
+                                navController.navigate("add_course?courseId=$id")
+                            }
+                        )
 
-                        5 -> {
-                            ProfileScreen(
-                                profile = profile,
-                                onBack = {
-                                    scope.launch {
-                                        if (currentPage > 0) {
-                                            pagerState.animateScrollToPage(
-                                                currentPage - 1
-                                            )
-                                        }
-                                    }
-                                },
-                                onNotificationSettings = {
-                                    navController.navigate(
-                                        Screen.NotificationSettings.route
-                                    )
-                                },
-                                onBackupData = {
-                                    navController.navigate(
-                                        Screen.Backup.route
-                                    )
-                                },
-                                onEditProfile = {},
-                                onLogout = {
-                                    scope.launch {
-                                        authRepository.clearLocalSession()
+                        5 -> ProfileScreen(
+                            profile = profile,
+                            onBack = {
+                                scope.launch {
+                                    if (currentPage > 0) {
+                                        pagerState.animateScrollToPage(currentPage - 1)
                                     }
                                 }
-                            )
-                        }
+                            },
+                            onNotificationSettings = {
+                                navController.navigate(Screen.NotificationSettings.route)
+                            },
+                            onBackupData = {
+                                navController.navigate(Screen.Backup.route)
+                            },
+                            onEditProfile = {},
+                            onLogout = {
+                                scope.launch {
+                                    authRepository.clearLocalSession()
+                                }
+                            }
+                        )
                     }
                 }
             }
