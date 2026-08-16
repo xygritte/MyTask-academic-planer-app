@@ -183,7 +183,7 @@ fun LoginScreen(
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
                 Image(
-                    painter = painterResource(R.mipmap.mytask_background),
+                    painter = painterResource(R.mipmap.ic_launcher),
                     contentDescription = "MyTask",
                     modifier = Modifier
                         .size(78.dp)

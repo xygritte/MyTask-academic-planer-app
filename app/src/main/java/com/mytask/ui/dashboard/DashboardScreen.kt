@@ -98,7 +98,7 @@ fun DashboardScreen(
                 title = {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Image(
-                            painter = painterResource(R.mipmap.mytask_background),
+                            painter = painterResource(R.mipmap.ic_launcher),
                             contentDescription = "MyTask",
                             modifier = Modifier
                                 .size(40.dp)
