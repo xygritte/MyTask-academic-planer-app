@@ -121,6 +121,11 @@ dependencies {
         "com.google.android.libraries.identity.googleid:googleid:1.1.1"
     )
 
+    // Image picker / crop
+    implementation(
+        "com.github.yalantis:ucrop:2.2.11"
+    )
+
     // Hilt
     implementation("com.google.dagger:hilt-android:2.57")
     kapt("com.google.dagger:hilt-android-compiler:2.57")
