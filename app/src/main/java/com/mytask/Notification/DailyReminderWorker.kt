@@ -116,13 +116,25 @@ class DailyReminderWorker(
 
             if (isOverdue) {
                 val overdueDays = getOverdueDays(today, deadlineDay)
-                NotificationHelper.showOverdueTaskNotification(
+                val wasPosted = NotificationHelper.showOverdueTaskNotification(
                     applicationContext,
                     task.id.toString(),
+                    task.deadline!!.time,
                     "⚠️ ${task.title}",
                     buildOverdueTaskDetail(task, overdueDays)
                 )
-                AppDebugLog.d("NOTIFICATION", "overdue notification taskId=${task.id} days=$overdueDays")
+
+                if (wasPosted) {
+                    AppDebugLog.d(
+                        "NOTIFICATION",
+                        "overdue notification taskId=${task.id} days=$overdueDays posted=true"
+                    )
+                } else {
+                    AppDebugLog.d(
+                        "NOTIFICATION",
+                        "overdue notification taskId=${task.id} days=$overdueDays posted=false reason=alreadyShownOrUnavailable"
+                    )
+                }
                 return@forEach
             }
 
