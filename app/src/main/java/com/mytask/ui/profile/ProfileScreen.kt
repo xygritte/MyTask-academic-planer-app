@@ -19,6 +19,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowForwardIos
 import androidx.compose.material.icons.filled.Cloud
+import androidx.compose.material.icons.filled.CloudUpload
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Logout
 import androidx.compose.material.icons.filled.Notifications
@@ -47,10 +48,14 @@ import com.mytask.data.repository.UserProfile
 @Composable
 fun ProfileScreen(
     profile: UserProfile,
+    canSaveOnline: Boolean = false,
+    isSavingOnline: Boolean = false,
+    onlineSaveMessage: String? = null,
     onBack: () -> Unit = {},
     onNotificationSettings: () -> Unit = {},
     onBackupData: () -> Unit = {},
     onEditProfile: () -> Unit = {},
+    onSaveDataOnline: () -> Unit = {},
     onLogout: () -> Unit = {}
 ) {
 
@@ -176,6 +181,33 @@ fun ProfileScreen(
             )
 
             ProfileMenuCard(
+                icon = Icons.Default.CloudUpload,
+                title = "Simpan data ke online",
+                description = if (canSaveOnline) {
+                    "Upload tugas, jadwal, dan mata kuliah ke akun kamu."
+                } else {
+                    "Tersedia setelah login menggunakan akun."
+                },
+                onClick = onSaveDataOnline,
+                enabled = canSaveOnline && !isSavingOnline
+            )
+
+            onlineSaveMessage?.let { message ->
+                Surface(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp),
+                    color = MaterialTheme.colorScheme.primaryContainer
+                ) {
+                    Text(
+                        text = message,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onPrimaryContainer,
+                        modifier = Modifier.padding(12.dp)
+                    )
+                }
+            }
+
+            ProfileMenuCard(
                 icon = Icons.Default.Cloud,
                 title = "Backup & Data",
                 description = "Ekspor dan impor data MyTask.",
@@ -187,7 +219,8 @@ fun ProfileScreen(
                 title = "Keluar",
                 description = "Keluar dari akun MyTask di perangkat ini.",
                 onClick = onLogout,
-                destructive = true
+                destructive = true,
+                enabled = !isSavingOnline
             )
 
             Spacer(Modifier.height(4.dp))
@@ -216,7 +249,8 @@ private fun ProfileMenuCard(
     title: String,
     description: String,
     onClick: () -> Unit,
-    destructive: Boolean = false
+    destructive: Boolean = false,
+    enabled: Boolean = true
 ) {
 
     val accent = if (destructive) {
@@ -237,10 +271,15 @@ private fun ProfileMenuCard(
         MaterialTheme.colorScheme.primary
     }
 
+    val contentAlpha = if (enabled) 1f else 0.48f
+
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable(onClick = onClick),
+            .clickable(
+                enabled = enabled,
+                onClick = onClick
+            ),
         shape = MaterialTheme.shapes.large,
         colors = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.surface
@@ -261,12 +300,12 @@ private fun ProfileMenuCard(
             Surface(
                 modifier = Modifier.size(44.dp),
                 shape = RoundedCornerShape(12.dp),
-                color = iconBackground
+                color = iconBackground.copy(alpha = contentAlpha)
             ) {
                 Icon(
                     imageVector = icon,
                     contentDescription = null,
-                    tint = iconOnBackground,
+                    tint = iconOnBackground.copy(alpha = contentAlpha),
                     modifier = Modifier.padding(10.dp)
                 )
             }
@@ -281,9 +320,9 @@ private fun ProfileMenuCard(
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.SemiBold,
                     color = if (destructive) {
-                        accent
+                        accent.copy(alpha = contentAlpha)
                     } else {
-                        MaterialTheme.colorScheme.onSurface
+                        MaterialTheme.colorScheme.onSurface.copy(alpha = contentAlpha)
                     }
                 )
 
@@ -292,7 +331,9 @@ private fun ProfileMenuCard(
                 Text(
                     text = description,
                     style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(
+                        alpha = contentAlpha
+                    )
                 )
             }
 
@@ -300,7 +341,9 @@ private fun ProfileMenuCard(
                 imageVector = Icons.Default.ArrowForwardIos,
                 contentDescription = "Buka",
                 modifier = Modifier.size(16.dp),
-                tint = MaterialTheme.colorScheme.onSurfaceVariant
+                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(
+                    alpha = contentAlpha
+                )
             )
         }
     }
