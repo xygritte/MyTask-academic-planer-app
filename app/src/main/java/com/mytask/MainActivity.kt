@@ -78,13 +78,10 @@ class MainActivity : ComponentActivity() {
     private val notificationPermissionLauncher =
         registerForActivityResult(
             ActivityResultContracts.RequestPermission()
-        ) {
-            // Tidak perlu melakukan apa-apa.
-        }
+        ) { }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-
         requestNotificationPermission()
 
         setContent {
@@ -121,7 +118,6 @@ private fun MyTaskApp(
     templateDataImporter: TemplateDataImporter,
     cloudDataSyncRepository: CloudDataSyncRepository
 ) {
-
     val context = LocalContext.current.applicationContext
 
     val userProfileRepository = remember(context) {
@@ -139,6 +135,9 @@ private fun MyTaskApp(
     val localProfile by userProfileRepository.profile.collectAsState(
         initial = null
     )
+
+    val currentLocalProfile = localProfile
+    val currentFirebaseUser = firebaseUser
 
     var accountProfile by remember {
         mutableStateOf<UserProfile?>(null)
@@ -171,25 +170,26 @@ private fun MyTaskApp(
         minimumLoading = false
     }
 
-    LaunchedEffect(firebaseUser?.uid) {
-        val user = firebaseUser
+    LaunchedEffect(currentFirebaseUser?.uid) {
+        val user = currentFirebaseUser
 
         accountLoading = user != null
         syncReady = false
         accountProfile = null
 
         if (user != null) {
-            val local = localProfile
+            val local = currentLocalProfile
+            val cachedUid = userProfileRepository.uid.first()
+
             val immediateProfile =
-                local?.takeIf {
-                    userProfileRepository.uid.first() == user.uid
-                } ?: UserProfile(
-                    name = user.displayName
-                        ?.trim()
-                        ?.takeIf { it.isNotBlank() }
-                        ?: "Mahasiswa",
-                    program = "Program Studi belum diatur"
-                )
+                local?.takeIf { cachedUid == user.uid }
+                    ?: UserProfile(
+                        name = user.displayName
+                            ?.trim()
+                            ?.takeIf { it.isNotBlank() }
+                            ?: "Mahasiswa",
+                        program = "Program Studi belum diatur"
+                    )
 
             accountProfile = immediateProfile
             accountLoading = false
@@ -214,8 +214,8 @@ private fun MyTaskApp(
         }
     }
 
-    LaunchedEffect(firebaseUser?.uid, syncReady) {
-        val user = firebaseUser
+    LaunchedEffect(currentFirebaseUser?.uid, syncReady) {
+        val user = currentFirebaseUser
 
         if (user == null || !syncReady) {
             return@LaunchedEffect
@@ -233,20 +233,17 @@ private fun MyTaskApp(
             }
     }
 
-    val profile = if (firebaseUser != null) {
+    val activeProfile = if (currentFirebaseUser != null) {
         accountProfile
+            ?: UserProfile(
+                name = currentFirebaseUser.displayName
+                    ?.trim()
+                    ?.takeIf { it.isNotBlank() }
+                    ?: "Mahasiswa",
+                program = "Program Studi belum diatur"
+            )
     } else {
-        localProfile
-    }
-
-    val activeProfile = profile ?: firebaseUser?.let { user ->
-        UserProfile(
-            name = user.displayName
-                ?.trim()
-                ?.takeIf { it.isNotBlank() }
-                ?: "Mahasiswa",
-            program = "Program Studi belum diatur"
-        )
+        currentLocalProfile
     }
 
     if (minimumLoading) {
@@ -254,8 +251,8 @@ private fun MyTaskApp(
         return
     }
 
-    if (firebaseUser != null && activeProfile != null && !accountLoading) {
-        val templateUid = firebaseUser?.uid ?: "guest"
+    if (activeProfile != null) {
+        val templateUid = currentFirebaseUser?.uid ?: "guest"
 
         val promptFlow = remember(templateUid) {
             templatePreferenceRepository.promptShown(templateUid)
@@ -265,15 +262,13 @@ private fun MyTaskApp(
             initial = false
         )
 
-        Box(
-            modifier = Modifier.fillMaxSize()
-        ) {
+        Box(modifier = Modifier.fillMaxSize()) {
             MyTaskMainContent(
                 profile = activeProfile,
                 authRepository = authRepository
             )
 
-            if (!templatePromptShown) {
+            if (!templatePromptShown && !accountLoading) {
                 AcademicTemplateDialog(
                     isApplying = isApplyingTemplate,
                     errorMessage = templateError,
@@ -294,7 +289,7 @@ private fun MyTaskApp(
                                 runCatching {
                                     templateDataImporter.importTemplate()
 
-                                    val user = firebaseUser
+                                    val user = currentFirebaseUser
                                     if (user != null) {
                                         cloudDataSyncRepository.uploadCurrentData(
                                             user.uid
@@ -319,22 +314,9 @@ private fun MyTaskApp(
         return
     }
 
-    if (firebaseUser == null && localProfile != null) {
-        MyTaskMainContent(
-            profile = localProfile,
-            authRepository = authRepository
-        )
-        return
-    }
-
-    if (firebaseUser == null && localProfile == null) {
-        LoginScreen(
-            authRepository = authRepository
-        )
-        return
-    }
-
-    LoadingScreen()
+    LoginScreen(
+        authRepository = authRepository
+    )
 }
 
 @Composable
@@ -342,7 +324,6 @@ private fun MyTaskMainContent(
     profile: UserProfile,
     authRepository: FirebaseAuthRepository
 ) {
-
     val navController = rememberNavController()
     val scope = rememberCoroutineScope()
 
@@ -352,7 +333,6 @@ private fun MyTaskMainContent(
     )
 
     val currentPage = pagerState.currentPage
-
     val backStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = backStackEntry?.destination?.route
 
@@ -372,80 +352,57 @@ private fun MyTaskMainContent(
                             scope.launch { pagerState.animateScrollToPage(0) }
                         },
                         icon = {
-                            Icon(
-                                Icons.Default.Dashboard,
-                                contentDescription = "Dashboard"
-                            )
+                            Icon(Icons.Default.Dashboard, "Dashboard")
                         },
                         alwaysShowLabel = false
                     )
-
                     NavigationBarItem(
                         selected = currentPage == 1,
                         onClick = {
                             scope.launch { pagerState.animateScrollToPage(1) }
                         },
                         icon = {
-                            Icon(
-                                Icons.Default.Task,
-                                contentDescription = "Tugas"
-                            )
+                            Icon(Icons.Default.Task, "Tugas")
                         },
                         alwaysShowLabel = false
                     )
-
                     NavigationBarItem(
                         selected = currentPage == 2,
                         onClick = {
                             scope.launch { pagerState.animateScrollToPage(2) }
                         },
                         icon = {
-                            Icon(
-                                Icons.Default.Schedule,
-                                contentDescription = "Jadwal"
-                            )
+                            Icon(Icons.Default.Schedule, "Jadwal")
                         },
                         alwaysShowLabel = false
                     )
-
                     NavigationBarItem(
                         selected = currentPage == 3,
                         onClick = {
                             scope.launch { pagerState.animateScrollToPage(3) }
                         },
                         icon = {
-                            Icon(
-                                Icons.Default.CalendarMonth,
-                                contentDescription = "Kalender"
-                            )
+                            Icon(Icons.Default.CalendarMonth, "Kalender")
                         },
                         alwaysShowLabel = false
                     )
-
                     NavigationBarItem(
                         selected = currentPage == 4,
                         onClick = {
                             scope.launch { pagerState.animateScrollToPage(4) }
                         },
                         icon = {
-                            Icon(
-                                Icons.Default.MenuBook,
-                                contentDescription = "Mata Kuliah"
-                            )
+                            Icon(Icons.Default.MenuBook, "Mata Kuliah")
                         },
                         alwaysShowLabel = false
                     )
-
                     NavigationBarItem(
                         selected = currentPage == 5,
                         onClick = {
                             scope.launch { pagerState.animateScrollToPage(5) }
                         },
                         icon = {
-                            Icon(
-                                Icons.Default.Person,
-                                contentDescription = "Profile"
-                            )
+                            Icon(Icons.Default.Person, "Profile")
                         },
                         alwaysShowLabel = false
                     )
@@ -486,7 +443,6 @@ private fun MyTaskMainContent(
                                 scope.launch { pagerState.animateScrollToPage(3) }
                             }
                         )
-
                         1 -> TaskListScreen(
                             onAddTask = {
                                 navController.navigate("add_task?taskId=-1")
@@ -495,9 +451,7 @@ private fun MyTaskMainContent(
                                 navController.navigate("add_task?taskId=$id")
                             }
                         )
-
                         2 -> ScheduleScreen()
-
                         3 -> CalendarScreen(
                             onBack = {
                                 scope.launch {
@@ -507,7 +461,6 @@ private fun MyTaskMainContent(
                                 }
                             }
                         )
-
                         4 -> CourseListScreen(
                             onAddCourse = {
                                 navController.navigate("add_course?courseId=-1")
@@ -516,7 +469,6 @@ private fun MyTaskMainContent(
                                 navController.navigate("add_course?courseId=$id")
                             }
                         )
-
                         5 -> ProfileScreen(
                             profile = profile,
                             onBack = {
