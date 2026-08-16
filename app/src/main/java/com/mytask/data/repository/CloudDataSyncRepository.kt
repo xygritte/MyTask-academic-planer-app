@@ -49,19 +49,10 @@ class CloudDataSyncRepository @Inject constructor(
             )
         }
 
-    /**
-     * Switch the local Room database to the requested account.
-     *
-     * IMPORTANT: local data from the previous account is cleared BEFORE
-     * reading the new account's cloud snapshot. A brand-new account must
-     * never inherit the previous account's local data.
-     */
     suspend fun syncOnLogin(uid: String): Boolean {
         require(uid.isNotBlank())
 
-        clearLocalAcademicData()
-        NotificationHelper.cancelAllAppNotifications(context)
-        ReminderScheduler.cancel(context)
+        clearLocalSessionData()
 
         return try {
             val snapshot = document(uid).get().await()
@@ -79,9 +70,8 @@ class CloudDataSyncRepository @Inject constructor(
                 true
             }
         } catch (error: Throwable) {
-            // Keep the account isolated even when cloud sync is temporarily
-            // unavailable. The local DB stays empty rather than leaking the
-            // previous account's data.
+            // The local database remains empty if cloud sync fails. This keeps
+            // account data isolated even during a temporary network failure.
             ReminderScheduler.initialize(context)
             throw error
         }
@@ -112,16 +102,22 @@ class CloudDataSyncRepository @Inject constructor(
         return localFile(uid)
     }
 
-    /**
-     * Wipe only the current device's Room academic data.
-     * The user's Firestore backup and UID-specific local JSON file are kept.
-     */
     suspend fun clearLocalAcademicData() {
         database.withTransaction {
             database.scheduleDao().deleteAll()
             database.taskDao().deleteAll()
             database.courseDao().deleteAll()
         }
+    }
+
+    /**
+     * Clears device-only academic state for the current session.
+     * Firestore backups and UID-specific JSON files are preserved.
+     */
+    suspend fun clearLocalSessionData() {
+        clearLocalAcademicData()
+        NotificationHelper.cancelAllAppNotifications(context)
+        ReminderScheduler.cancel(context)
     }
 
     private suspend fun replaceLocalDatabase(json: String) {
@@ -267,10 +263,7 @@ class CloudDataSyncRepository @Inject constructor(
                         description = item.optString("description"),
                         deadline = deadline,
                         priority = item.optInt("priority", 1),
-                        isCompleted = item.optBoolean(
-                            "isCompleted",
-                            false
-                        )
+                        isCompleted = item.optBoolean("isCompleted", false)
                     )
                 )
             }
@@ -315,9 +308,6 @@ class CloudDataSyncRepository @Inject constructor(
     }
 
     private fun saveLocalJson(uid: String, json: String) {
-        localFile(uid).writeText(
-            json,
-            Charsets.UTF_8
-        )
+        localFile(uid).writeText(json, Charsets.UTF_8)
     }
 }
