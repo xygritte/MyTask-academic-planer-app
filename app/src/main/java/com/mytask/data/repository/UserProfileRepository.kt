@@ -26,16 +26,39 @@ class UserProfileRepository @Inject constructor(
 ) {
 
     companion object {
-        private val NAME_KEY = stringPreferencesKey("student_name")
-        private val PROGRAM_KEY = stringPreferencesKey("student_program")
+        private val UID_KEY =
+            stringPreferencesKey("student_uid")
+
+        private val NAME_KEY =
+            stringPreferencesKey("student_name")
+
+        private val PROGRAM_KEY =
+            stringPreferencesKey("student_program")
     }
 
     val profile: Flow<UserProfile?> =
         context.userProfileDataStore.data.map { preferences: Preferences ->
-            val name = preferences[NAME_KEY]?.trim().orEmpty()
-            val program = preferences[PROGRAM_KEY]?.trim().orEmpty()
 
-            if (name.isBlank() || program.isBlank()) {
+            val uid =
+                preferences[UID_KEY]
+                    ?.trim()
+                    .orEmpty()
+
+            val name =
+                preferences[NAME_KEY]
+                    ?.trim()
+                    .orEmpty()
+
+            val program =
+                preferences[PROGRAM_KEY]
+                    ?.trim()
+                    .orEmpty()
+
+            if (
+                uid.isBlank() ||
+                name.isBlank() ||
+                program.isBlank()
+            ) {
                 null
             } else {
                 UserProfile(
@@ -46,17 +69,26 @@ class UserProfileRepository @Inject constructor(
         }
 
     suspend fun saveProfile(
+        uid: String,
         name: String,
         program: String
     ) {
         context.userProfileDataStore.edit { preferences ->
-            preferences[NAME_KEY] = name.trim()
-            preferences[PROGRAM_KEY] = program.trim()
+
+            preferences[UID_KEY] =
+                uid.trim()
+
+            preferences[NAME_KEY] =
+                name.trim()
+
+            preferences[PROGRAM_KEY] =
+                program.trim()
         }
     }
 
     suspend fun clearProfile() {
         context.userProfileDataStore.edit { preferences ->
+            preferences.remove(UID_KEY)
             preferences.remove(NAME_KEY)
             preferences.remove(PROGRAM_KEY)
         }
