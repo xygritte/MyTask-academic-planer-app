@@ -75,6 +75,7 @@ import com.mytask.R
 import com.mytask.data.repository.UserProfile
 import com.mytask.data.repository.UserProfileRepository
 import com.mytask.debug.AuthDebugLog
+import com.mytask.ui.login.isNetworkAvailable
 import com.yalantis.ucrop.UCrop
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.launch
@@ -96,13 +97,18 @@ fun ProfileScreen(
     onLogout: () -> Unit = {}
 ) {
     val context = LocalContext.current.applicationContext
+    val networkAvailable = isNetworkAvailable(context)
+    val firebaseAuth = FirebaseAuth.getInstance()
+    val authenticatedUser = firebaseAuth.currentUser != null
+    val canEditAuthenticatedProfile = !authenticatedUser || networkAvailable
+
     val userProfileRepository = remember(context) {
         UserProfileRepository(context)
     }
     val storedProfile by userProfileRepository.profile.collectAsState(initial = profile)
     val storedPhotoUri by userProfileRepository.profilePhotoUri.collectAsState(initial = null)
     val displayedProfile = storedProfile ?: profile
-    val firebasePhotoUri = FirebaseAuth.getInstance().currentUser?.photoUrl?.toString()
+    val firebasePhotoUri = firebaseAuth.currentUser?.photoUrl?.toString()
     val photoModel = storedPhotoUri ?: firebasePhotoUri
 
     var showEditDialog by remember { mutableStateOf(false) }
@@ -357,7 +363,9 @@ fun ProfileScreen(
                             editSuccess = null
                             showEditDialog = true
                         },
-                        enabled = !isUpdatingProfile && !isCroppingPhoto
+                        enabled = canEditAuthenticatedProfile &&
+                            !isUpdatingProfile &&
+                            !isCroppingPhoto
                     ) {
                         Icon(
                             imageVector = Icons.Default.Edit,
@@ -418,6 +426,8 @@ fun ProfileScreen(
                 title = "Simpan data ke online",
                 description = if (canSaveOnline) {
                     "Upload tugas, jadwal, dan mata kuliah ke akun kamu."
+                } else if (authenticatedUser && !networkAvailable) {
+                    "Hubungkan internet untuk menyimpan data ke online."
                 } else {
                     "Tersedia setelah login menggunakan akun."
                 },
@@ -450,7 +460,11 @@ fun ProfileScreen(
             ProfileMenuCard(
                 icon = Icons.Default.Logout,
                 title = "Keluar",
-                description = "Keluar dari akun MyTask di perangkat ini.",
+                description = if (authenticatedUser && !networkAvailable) {
+                    "Hubungkan internet untuk menyimpan data sebelum keluar."
+                } else {
+                    "Keluar dari akun MyTask di perangkat ini."
+                },
                 onClick = onLogout,
                 destructive = true,
                 enabled = !isSavingOnline && !isUpdatingProfile && !isCroppingPhoto
@@ -519,6 +533,10 @@ fun ProfileScreen(
                         val firebaseUser = FirebaseAuth.getInstance().currentUser
 
                         if (firebaseUser != null) {
+                            if (!isNetworkAvailable(context)) {
+                                error("Hubungkan internet untuk memperbarui nama dan program studi.")
+                            }
+
                             firebaseUser.updateProfile(
                                 UserProfileChangeRequest.Builder()
                                     .setDisplayName(cleanName)
