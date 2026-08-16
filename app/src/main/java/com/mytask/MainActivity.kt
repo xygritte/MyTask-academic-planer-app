@@ -285,9 +285,10 @@ private fun MyTaskApp(
                             runCatching {
                                 templateDataImporter.importTemplate()
 
-                                if (firebaseUser != null) {
+                                val user = firebaseUser
+                                if (user != null) {
                                     cloudDataSyncRepository.uploadCurrentData(
-                                        firebaseUser.uid
+                                        user.uid
                                     )
                                 }
                             }.onSuccess {
