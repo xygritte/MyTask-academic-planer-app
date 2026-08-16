@@ -21,6 +21,8 @@ object NotificationHelper {
     private const val TASK_CHANNEL_ID = "task_reminder"
     private const val SCHEDULE_CHANNEL_ID = "schedule_reminder"
     private const val ACTIVE_TASKS_NOTIFICATION_ID = 4000
+    private const val OVERDUE_STATE_PREFS = "mytask_overdue_notification_state"
+    private const val OVERDUE_STATE_PREFIX = "shown_"
 
     fun createChannels(context: Context) {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
@@ -110,12 +112,37 @@ object NotificationHelper {
         )
     }
 
+    /**
+     * Shows an overdue notification at most once for a task/deadline pair.
+     * Re-running the daily worker or changing the reminder-days setting must
+     * not make the same overdue notification alert again.
+     *
+     * @return true when a new notification was posted, false when it was
+     * already posted for the same deadline or notifications are unavailable.
+     */
     fun showOverdueTaskNotification(
         context: Context,
         taskId: String,
+        deadlineMillis: Long,
         title: String,
         message: String
-    ) {
+    ): Boolean {
+        if (!canNotify(context)) {
+            AppDebugLog.d(
+                "NOTIFICATION",
+                "overdue notification skipped taskId=$taskId permission/setting disabled"
+            )
+            return false
+        }
+
+        if (hasShownOverdueNotification(context, taskId, deadlineMillis)) {
+            AppDebugLog.d(
+                "NOTIFICATION",
+                "overdue notification suppressed taskId=$taskId deadline=$deadlineMillis alreadyShown=true"
+            )
+            return false
+        }
+
         showTaskNotificationInternal(
             context = context,
             taskId = taskId,
@@ -123,6 +150,17 @@ object NotificationHelper {
             message = message,
             overdue = true
         )
+
+        markOverdueNotificationShown(context, taskId, deadlineMillis)
+        return true
+    }
+
+    fun clearOverdueNotificationState(context: Context, taskId: String) {
+        context.getSharedPreferences(OVERDUE_STATE_PREFS, Context.MODE_PRIVATE)
+            .edit()
+            .remove(overdueStateKey(taskId))
+            .apply()
+        AppDebugLog.d("NOTIFICATION", "cleared overdue notification state taskId=$taskId")
     }
 
     private fun showTaskNotificationInternal(
@@ -245,6 +283,33 @@ object NotificationHelper {
             .cancelAll()
         AppDebugLog.d("NOTIFICATION", "cancelled all app notifications")
     }
+
+    private fun hasShownOverdueNotification(
+        context: Context,
+        taskId: String,
+        deadlineMillis: Long
+    ): Boolean {
+        val stored = context
+            .getSharedPreferences(OVERDUE_STATE_PREFS, Context.MODE_PRIVATE)
+            .getLong(overdueStateKey(taskId), Long.MIN_VALUE)
+
+        return stored == deadlineMillis
+    }
+
+    private fun markOverdueNotificationShown(
+        context: Context,
+        taskId: String,
+        deadlineMillis: Long
+    ) {
+        context
+            .getSharedPreferences(OVERDUE_STATE_PREFS, Context.MODE_PRIVATE)
+            .edit()
+            .putLong(overdueStateKey(taskId), deadlineMillis)
+            .apply()
+    }
+
+    private fun overdueStateKey(taskId: String): String =
+        "$OVERDUE_STATE_PREFIX$taskId"
 
     private fun taskNotificationId(taskId: String): Int {
         val hash = abs(taskId.hashCode())
