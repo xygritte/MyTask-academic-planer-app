@@ -25,37 +25,25 @@ class TaskViewModel @Inject constructor(
     private val courseRepository: CourseRepository
 ) : AndroidViewModel(application) {
 
-    private val appContext =
-        application.applicationContext
+    private val appContext = application.applicationContext
 
-    val tasks: StateFlow<List<TaskEntity>> =
-        repository
-            .getAllTasks()
-            .stateIn(
-                viewModelScope,
-                SharingStarted.WhileSubscribed(5000),
-                emptyList()
-            )
+    val tasks: StateFlow<List<TaskEntity>> = repository.getAllTasks().stateIn(
+        viewModelScope,
+        SharingStarted.WhileSubscribed(5000),
+        emptyList()
+    )
 
-    val courses: StateFlow<List<CourseEntity>> =
-        courseRepository
-            .getAllCourses()
-            .stateIn(
-                viewModelScope,
-                SharingStarted.WhileSubscribed(5000),
-                emptyList()
-            )
+    val courses: StateFlow<List<CourseEntity>> = courseRepository.getAllCourses().stateIn(
+        viewModelScope,
+        SharingStarted.WhileSubscribed(5000),
+        emptyList()
+    )
 
-    fun getTaskById(
-        id: Long
-    ): StateFlow<TaskEntity?> =
-        repository
-            .getTaskById(id)
-            .stateIn(
-                viewModelScope,
-                SharingStarted.WhileSubscribed(5000),
-                null
-            )
+    fun getTaskById(id: Long): StateFlow<TaskEntity?> = repository.getTaskById(id).stateIn(
+        viewModelScope,
+        SharingStarted.WhileSubscribed(5000),
+        null
+    )
 
     fun addTask(
         courseId: Long?,
@@ -65,116 +53,63 @@ class TaskViewModel @Inject constructor(
         deadline: Date?,
         onSaved: () -> Unit
     ) {
-
         viewModelScope.launch {
-
-            repository.addTask(
-
-                TaskEntity(
-                    courseId = courseId,
-                    title = title,
-                    description = description,
-                    priority = priority,
-                    deadline = deadline
-                )
+            val task = TaskEntity(
+                courseId = courseId,
+                title = title,
+                description = description,
+                priority = priority,
+                deadline = deadline
             )
 
-            // Update notifikasi tugas aktif
-            ReminderScheduler.syncToday(
-                appContext
-            )
-
+            repository.addTask(task)
+            val savedTask = tasks.firstOrNull { it.title == task.title && it.deadline == task.deadline }
+            savedTask?.let {
+                ReminderScheduler.scheduleTaskDeadline(appContext, it.id, it.deadline)
+            }
+            ReminderScheduler.syncToday(appContext)
             onSaved()
         }
     }
 
-    fun updateTask(
-        task: TaskEntity,
-        onSaved: () -> Unit
-    ) {
-
+    fun updateTask(task: TaskEntity, onSaved: () -> Unit) {
         viewModelScope.launch {
-
-            repository.updateTask(
-                task
-            )
+            repository.updateTask(task)
 
             if (task.isCompleted) {
-
-                NotificationHelper
-                    .cancelTaskNotification(
-                        appContext,
-                        task.id.toString()
-                    )
+                NotificationHelper.cancelTaskNotification(appContext, task.id.toString())
+                ReminderScheduler.cancelTaskDeadline(appContext, task.id)
+            } else {
+                ReminderScheduler.scheduleTaskDeadline(appContext, task.id, task.deadline)
             }
 
-            // Update ringkasan tugas aktif
-            ReminderScheduler.syncToday(
-                appContext
-            )
-
+            ReminderScheduler.syncToday(appContext)
             onSaved()
         }
     }
 
-    fun deleteTask(
-        task: TaskEntity
-    ) {
-
+    fun deleteTask(task: TaskEntity) {
         viewModelScope.launch {
-
-            repository.deleteTask(
-                task
-            )
-
-            NotificationHelper
-                .cancelTaskNotification(
-                    appContext,
-                    task.id.toString()
-                )
-
-            ReminderScheduler.syncToday(
-                appContext
-            )
+            repository.deleteTask(task)
+            NotificationHelper.cancelTaskNotification(appContext, task.id.toString())
+            ReminderScheduler.cancelTaskDeadline(appContext, task.id)
+            ReminderScheduler.syncToday(appContext)
         }
     }
 
-    fun toggleTask(
-        task: TaskEntity
-    ) {
-
+    fun toggleTask(task: TaskEntity) {
         viewModelScope.launch {
+            val updatedTask = task.copy(isCompleted = !task.isCompleted)
+            repository.updateTask(updatedTask)
 
-            val newCompleted =
-                !task.isCompleted
-
-            val updatedTask =
-                task.copy(
-                    isCompleted =
-                        newCompleted
-                )
-
-            repository.updateTask(
-                updatedTask
-            )
-
-            if (newCompleted) {
-
-                NotificationHelper
-                    .cancelTaskNotification(
-                        appContext,
-                        task.id.toString()
-                    )
+            if (updatedTask.isCompleted) {
+                NotificationHelper.cancelTaskNotification(appContext, task.id.toString())
+                ReminderScheduler.cancelTaskDeadline(appContext, task.id)
+            } else {
+                ReminderScheduler.scheduleTaskDeadline(appContext, task.id, updatedTask.deadline)
             }
 
-            /*
-             * Perbarui:
-             * - Tugas Aktif
-             * - Tugas Hari Ini
-             */
-            ReminderScheduler.syncToday(
-                appContext
-            )
+            ReminderScheduler.syncToday(appContext)
         }
     }
 }
