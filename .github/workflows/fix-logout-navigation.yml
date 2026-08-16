@@ -1,0 +1,87 @@
+name: Fix logout navigation
+
+on:
+  push:
+    paths:
+      - '.github/workflows/fix-logout-navigation.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Patch MainActivity
+        shell: python
+        run: |
+          from pathlib import Path
+
+          path = Path('app/src/main/java/com/mytask/MainActivity.kt')
+          text = path.read_text(encoding='utf-8')
+
+          old = '''    LaunchedEffect(currentLocalProfile) {
+        val profile = currentLocalProfile
+        val uid = runCatching { userProfileRepository.uid.first() }.getOrNull()
+        if (profile != null && uid != null) {
+            sessionProfile = profile
+            sessionUid = uid
+            if (uid == "guest" && currentFirebaseUser == null) {
+                syncReady = true
+                val guestPromptShown = runCatching {
+                    templatePreferenceRepository.promptShown("guest").first()
+                }.getOrDefault(false)
+                shouldShowTemplatePrompt = !guestPromptShown
+            }
+        }
+    }
+'''
+
+          new = '''    LaunchedEffect(currentLocalProfile) {
+        val profile = currentLocalProfile
+        val uid = runCatching { userProfileRepository.uid.first() }.getOrNull()
+        if (profile != null && uid != null) {
+            sessionProfile = profile
+            sessionUid = uid
+            if (uid == "guest" && currentFirebaseUser == null) {
+                syncReady = true
+                val guestPromptShown = runCatching {
+                    templatePreferenceRepository.promptShown("guest").first()
+                }.getOrDefault(false)
+                shouldShowTemplatePrompt = !guestPromptShown
+            }
+        } else if (
+            profile == null &&
+            currentFirebaseUser == null &&
+            sessionUid != null
+        ) {
+            // A completed logout clears the persisted profile. Clear the in-memory
+            // workspace immediately so the login screen appears without reopening.
+            sessionProfile = null
+            sessionUid = null
+            restorePendingState = false
+            syncReady = false
+            accountLoading = false
+            onlineSaveMessage = null
+            shouldShowTemplatePrompt = false
+        }
+    }
+'''
+
+          if old not in text:
+              raise SystemExit('Expected logout navigation block was not found')
+
+          path.write_text(text.replace(old, new, 1), encoding='utf-8')
+          Path('.github/workflows/fix-logout-navigation.yml').unlink()
+
+      - name: Commit and push
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add app/src/main/java/com/mytask/MainActivity.kt .github/workflows/fix-logout-navigation.yml
+          git diff --cached --quiet && exit 0
+          git commit -m "Fix immediate navigation to login after logout"
+          git push
