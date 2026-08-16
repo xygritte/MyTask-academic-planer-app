@@ -32,6 +32,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.zIndex
 import androidx.core.content.ContextCompat
 import androidx.navigation.compose.currentBackStackEntryAsState
@@ -114,10 +115,10 @@ private fun MyTaskApp(
     templateDataImporter: TemplateDataImporter
 ) {
 
-    val templatePreferenceRepository = remember {
-        TemplatePreferenceRepository(
-            context = androidx.compose.ui.platform.LocalContext.current.applicationContext
-        )
+    val context = LocalContext.current.applicationContext
+
+    val templatePreferenceRepository = remember(context) {
+        TemplatePreferenceRepository(context)
     }
 
     val firebaseUser by
@@ -503,7 +504,7 @@ private fun MyTaskMainContent(
                         }
                     }
                 }
-            }
+            )
         }
     }
 }
