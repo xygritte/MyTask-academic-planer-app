@@ -37,10 +37,12 @@ import androidx.compose.ui.zIndex
 import androidx.core.content.ContextCompat
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
+import com.mytask.data.repository.CloudDataSyncRepository
 import com.mytask.data.repository.FirebaseAuthRepository
 import com.mytask.data.repository.TemplateDataImporter
 import com.mytask.data.repository.TemplatePreferenceRepository
 import com.mytask.data.repository.UserProfile
+import com.mytask.data.repository.UserProfileRepository
 import com.mytask.navigation.NavGraph
 import com.mytask.navigation.Screen
 import com.mytask.ui.calendar.CalendarScreen
@@ -56,7 +58,8 @@ import com.mytask.ui.theme.MyTaskTheme
 import dagger.hilt.android.AndroidEntryPoint
 import javax.inject.Inject
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.launch
 
 @AndroidEntryPoint
@@ -68,6 +71,9 @@ class MainActivity : ComponentActivity() {
     @Inject
     lateinit var templateDataImporter: TemplateDataImporter
 
+    @Inject
+    lateinit var cloudDataSyncRepository: CloudDataSyncRepository
+
     private val notificationPermissionLauncher =
         registerForActivityResult(
             ActivityResultContracts.RequestPermission()
@@ -75,9 +81,7 @@ class MainActivity : ComponentActivity() {
             // Tidak perlu melakukan apa-apa.
         }
 
-    override fun onCreate(
-        savedInstanceState: Bundle?
-    ) {
+    override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
         requestNotificationPermission()
@@ -86,7 +90,8 @@ class MainActivity : ComponentActivity() {
             MyTaskTheme {
                 MyTaskApp(
                     authRepository = firebaseAuthRepository,
-                    templateDataImporter = templateDataImporter
+                    templateDataImporter = templateDataImporter,
+                    cloudDataSyncRepository = cloudDataSyncRepository
                 )
             }
         }
@@ -112,10 +117,15 @@ class MainActivity : ComponentActivity() {
 @Composable
 private fun MyTaskApp(
     authRepository: FirebaseAuthRepository,
-    templateDataImporter: TemplateDataImporter
+    templateDataImporter: TemplateDataImporter,
+    cloudDataSyncRepository: CloudDataSyncRepository
 ) {
 
     val context = LocalContext.current.applicationContext
+
+    val userProfileRepository = remember(context) {
+        UserProfileRepository(context)
+    }
 
     val templatePreferenceRepository = remember(context) {
         TemplatePreferenceRepository(context)
@@ -126,47 +136,26 @@ private fun MyTaskApp(
             initial = authRepository.currentUser
         )
 
-    var profile by remember {
+    val localProfile by
+        userProfileRepository.profile.collectAsState(
+            initial = null
+        )
+
+    var accountProfile by remember {
         mutableStateOf<UserProfile?>(null)
     }
 
-    var profileLoading by remember {
-        mutableStateOf(true)
+    var accountLoading by remember {
+        mutableStateOf(false)
+    }
+
+    var syncReady by remember {
+        mutableStateOf(false)
     }
 
     var minimumLoading by remember {
         mutableStateOf(true)
     }
-
-    LaunchedEffect(firebaseUser?.uid) {
-
-        profileLoading = true
-
-        profile = if (firebaseUser == null) {
-            null
-        } else {
-            authRepository
-                .reloadProfile()
-                .getOrNull()
-        }
-
-        profileLoading = false
-    }
-
-    LaunchedEffect(Unit) {
-        delay(800)
-        minimumLoading = false
-    }
-
-    val promptFlow = remember(firebaseUser?.uid) {
-        firebaseUser?.uid?.let { uid ->
-            templatePreferenceRepository
-                .promptShown(uid)
-        } ?: flowOf(true)
-    }
-
-    val templatePromptShown by
-        promptFlow.collectAsState(initial = true)
 
     var isApplyingTemplate by remember {
         mutableStateOf(false)
@@ -178,60 +167,137 @@ private fun MyTaskApp(
 
     val scope = rememberCoroutineScope()
 
-    if (minimumLoading || profileLoading) {
-        LoadingScreen()
+    LaunchedEffect(Unit) {
+        delay(800)
+        minimumLoading = false
+    }
+
+    LaunchedEffect(firebaseUser?.uid) {
+        accountLoading = firebaseUser != null
+        syncReady = false
+        accountProfile = null
+
+        val user = firebaseUser
+
+        if (user != null) {
+            val profileResult = authRepository.reloadProfile()
+            val profile = profileResult.getOrNull()
+
+            if (profile != null) {
+                accountProfile = profile
+
+                runCatching {
+                    cloudDataSyncRepository.syncOnLogin(user.uid)
+                }
+
+                syncReady = true
+            }
+        }
+
+        accountLoading = false
+    }
+
+    LaunchedEffect(firebaseUser?.uid, syncReady) {
+        val user = firebaseUser
+
+        if (user == null || !syncReady) {
+            return@LaunchedEffect
+        }
+
+        cloudDataSyncRepository
+            .databaseJson
+            .debounce(1200)
+            .collectLatest { json ->
+                runCatching {
+                    cloudDataSyncRepository.uploadJson(
+                        uid = user.uid,
+                        json = json
+                    )
+                }
+            }
+    }
+
+    val profile =
+        if (firebaseUser != null) {
+            accountProfile
+        } else {
+            localProfile
+        }
+
+    val sessionIsReady =
+        (firebaseUser != null && accountProfile != null && !accountLoading) ||
+            (firebaseUser == null && localProfile != null)
+
+    if (minimumLoading || !sessionIsReady) {
+        if (
+            firebaseUser == null &&
+            localProfile == null &&
+            !accountLoading
+        ) {
+            LoginScreen(
+                authRepository = authRepository
+            )
+        } else {
+            LoadingScreen()
+        }
         return
     }
 
-    if (firebaseUser == null) {
+    if (profile == null) {
         LoginScreen(
             authRepository = authRepository
         )
         return
     }
 
-    if (profile == null) {
-        LoadingScreen()
-        return
+    val templateUid = firebaseUser?.uid ?: "guest"
+
+    val promptFlow = remember(templateUid) {
+        templatePreferenceRepository
+            .promptShown(templateUid)
     }
+
+    val templatePromptShown by
+        promptFlow.collectAsState(initial = false)
 
     Box(
         modifier = Modifier.fillMaxSize()
     ) {
-
         MyTaskMainContent(
-            profile = profile!!,
+            profile = profile,
             authRepository = authRepository
         )
 
         if (!templatePromptShown) {
-
             AcademicTemplateDialog(
                 isApplying = isApplyingTemplate,
                 errorMessage = templateError,
-
                 onSkip = {
                     if (!isApplyingTemplate) {
                         scope.launch {
                             templatePreferenceRepository
-                                .markPromptShown(firebaseUser.uid)
+                                .markPromptShown(templateUid)
                         }
                     }
                 },
-
                 onApply = {
                     if (!isApplyingTemplate) {
                         scope.launch {
-
                             isApplyingTemplate = true
                             templateError = null
 
                             runCatching {
-                                templateDataImporter
-                                    .importTemplate()
+                                templateDataImporter.importTemplate()
+
+                                if (firebaseUser != null) {
+                                    cloudDataSyncRepository
+                                        .uploadCurrentData(
+                                            firebaseUser.uid
+                                        )
+                                }
                             }.onSuccess {
                                 templatePreferenceRepository
-                                    .markPromptShown(firebaseUser.uid)
+                                    .markPromptShown(templateUid)
                             }.onFailure { error ->
                                 templateError =
                                     error.message
@@ -271,9 +337,9 @@ private fun MyTaskMainContent(
 
     val isSubScreen =
         currentRoute == Screen.AddTask.route ||
-        currentRoute == Screen.AddCourse.route ||
-        currentRoute == Screen.NotificationSettings.route ||
-        currentRoute == Screen.Backup.route
+            currentRoute == Screen.AddCourse.route ||
+            currentRoute == Screen.NotificationSettings.route ||
+            currentRoute == Screen.Backup.route
 
     Scaffold(
         bottomBar = {
@@ -400,7 +466,6 @@ private fun MyTaskMainContent(
                 ) { page ->
 
                     when (page) {
-
                         0 -> {
                             DashboardScreen(
                                 onCoursesClick = {
@@ -441,9 +506,7 @@ private fun MyTaskMainContent(
                             )
                         }
 
-                        2 -> {
-                            ScheduleScreen()
-                        }
+                        2 -> ScheduleScreen()
 
                         3 -> {
                             CalendarScreen(
@@ -498,7 +561,9 @@ private fun MyTaskMainContent(
                                 },
                                 onEditProfile = {},
                                 onLogout = {
-                                    authRepository.signOut()
+                                    scope.launch {
+                                        authRepository.clearLocalSession()
+                                    }
                                 }
                             )
                         }
