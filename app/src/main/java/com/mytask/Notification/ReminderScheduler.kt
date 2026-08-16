@@ -27,11 +27,8 @@ object ReminderScheduler {
         WorkManager
             .getInstance(context)
             .enqueueUniqueWork(
-
                 IMMEDIATE_WORK_NAME,
-
                 ExistingWorkPolicy.REPLACE,
-
                 request
             )
     }
@@ -45,67 +42,21 @@ object ReminderScheduler {
                 Context.ALARM_SERVICE
             ) as AlarmManager
 
-        val intent =
-            Intent(
-                context,
-                MidnightReceiver::class.java
-            )
+        val pendingIntent = midnightPendingIntent(context)
 
-        val pendingIntent =
-            PendingIntent.getBroadcast(
+        val nextMidnight = Calendar.getInstance().apply {
+            add(Calendar.DAY_OF_YEAR, 1)
+            set(Calendar.HOUR_OF_DAY, 0)
+            set(Calendar.MINUTE, 0)
+            set(Calendar.SECOND, 0)
+            set(Calendar.MILLISECOND, 0)
+        }
 
-                context,
-
-                ALARM_REQUEST_CODE,
-
-                intent,
-
-                PendingIntent.FLAG_UPDATE_CURRENT or
-                        PendingIntent.FLAG_IMMUTABLE
-            )
-
-        val now =
-            Calendar.getInstance()
-
-        val nextMidnight =
-            Calendar.getInstance().apply {
-
-                add(
-                    Calendar.DAY_OF_YEAR,
-                    1
-                )
-
-                set(
-                    Calendar.HOUR_OF_DAY,
-                    0
-                )
-
-                set(
-                    Calendar.MINUTE,
-                    0
-                )
-
-                set(
-                    Calendar.SECOND,
-                    0
-                )
-
-                set(
-                    Calendar.MILLISECOND,
-                    0
-                )
-            }
-
-        alarmManager.cancel(
-            pendingIntent
-        )
+        alarmManager.cancel(pendingIntent)
 
         alarmManager.setAndAllowWhileIdle(
-
             AlarmManager.RTC_WAKEUP,
-
             nextMidnight.timeInMillis,
-
             pendingIntent
         )
     }
@@ -113,48 +64,41 @@ object ReminderScheduler {
     fun initialize(
         context: Context
     ) {
-
-        /*
-         * Langsung cek hari ini.
-         */
         syncToday(context)
-
-        /*
-         * Siapkan pergantian hari berikutnya.
-         */
         scheduleNextMidnight(context)
     }
 
     fun cancel(
         context: Context
     ) {
-
-        val intent =
-            Intent(
-                context,
-                MidnightReceiver::class.java
-            )
-
-        val pendingIntent =
-            PendingIntent.getBroadcast(
-
-                context,
-
-                ALARM_REQUEST_CODE,
-
-                intent,
-
-                PendingIntent.FLAG_UPDATE_CURRENT or
-                        PendingIntent.FLAG_IMMUTABLE
-            )
-
         val alarmManager =
             context.getSystemService(
                 Context.ALARM_SERVICE
             ) as AlarmManager
 
         alarmManager.cancel(
-            pendingIntent
+            midnightPendingIntent(context)
+        )
+
+        WorkManager
+            .getInstance(context)
+            .cancelUniqueWork(IMMEDIATE_WORK_NAME)
+    }
+
+    private fun midnightPendingIntent(
+        context: Context
+    ): PendingIntent {
+        val intent = Intent(
+            context,
+            MidnightReceiver::class.java
+        )
+
+        return PendingIntent.getBroadcast(
+            context,
+            ALARM_REQUEST_CODE,
+            intent,
+            PendingIntent.FLAG_UPDATE_CURRENT or
+                    PendingIntent.FLAG_IMMUTABLE
         )
     }
 }
