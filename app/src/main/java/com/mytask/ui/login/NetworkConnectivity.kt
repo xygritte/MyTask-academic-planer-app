@@ -23,12 +23,15 @@ fun isNetworkAvailable(context: Context): Boolean {
 }
 
 @Composable
-fun rememberNetworkAvailable(context: Context): Boolean {
-    var isOnline by remember(context) {
+fun rememberNetworkAvailable(
+    context: Context,
+    refreshKey: Int = 0
+): Boolean {
+    var isOnline by remember(context, refreshKey) {
         mutableStateOf(isNetworkAvailable(context))
     }
 
-    DisposableEffect(context) {
+    DisposableEffect(context, refreshKey) {
         val manager = context.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
 
         if (manager == null) {
@@ -37,7 +40,7 @@ fun rememberNetworkAvailable(context: Context): Boolean {
         } else {
             val callback = object : ConnectivityManager.NetworkCallback() {
                 override fun onAvailable(network: Network) {
-                    isOnline = true
+                    isOnline = isNetworkAvailable(context)
                 }
 
                 override fun onLost(network: Network) {
@@ -48,10 +51,7 @@ fun rememberNetworkAvailable(context: Context): Boolean {
                     network: Network,
                     networkCapabilities: NetworkCapabilities
                 ) {
-                    val validated = networkCapabilities.hasCapability(
-                        NetworkCapabilities.NET_CAPABILITY_VALIDATED
-                    )
-                    isOnline = validated && isNetworkAvailable(context)
+                    isOnline = isNetworkAvailable(context)
                 }
             }
 
