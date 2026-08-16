@@ -11,6 +11,7 @@ import com.google.firebase.auth.GoogleAuthProvider
 import com.google.firebase.auth.UserProfileChangeRequest
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.SetOptions
+import com.mytask.debug.AuthDebugLog
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
@@ -30,12 +31,21 @@ class FirebaseAuthRepository @Inject constructor(
 
     val authState: Flow<FirebaseUser?> = callbackFlow {
         val listener = FirebaseAuth.AuthStateListener { firebaseAuth ->
-            trySend(firebaseAuth.currentUser)
+            val user = firebaseAuth.currentUser
+            AuthDebugLog.d(
+                "AUTH_STATE changed: uid=${AuthDebugLog.uid(user?.uid)} signedIn=${user != null}"
+            )
+            trySend(user)
         }
+
+        AuthDebugLog.d(
+            "AUTH_STATE listener attached: currentUid=${AuthDebugLog.uid(auth.currentUser?.uid)}"
+        )
 
         auth.addAuthStateListener(listener)
 
         awaitClose {
+            AuthDebugLog.d("AUTH_STATE listener detached")
             auth.removeAuthStateListener(listener)
         }
     }
@@ -49,6 +59,7 @@ class FirebaseAuthRepository @Inject constructor(
         email: String,
         password: String
     ): Result<UserProfile> {
+        AuthDebugLog.d("REGISTER start")
         return try {
             val authResult = auth
                 .createUserWithEmailAndPassword(
@@ -60,7 +71,12 @@ class FirebaseAuthRepository @Inject constructor(
             val user = authResult.user
                 ?: error("Akun Firebase tidak berhasil dibuat.")
 
+            AuthDebugLog.d(
+                "REGISTER Firebase success: uid=${AuthDebugLog.uid(user.uid)}"
+            )
+
             cloudDataSyncRepository.clearLocalSessionData()
+            AuthDebugLog.d("REGISTER local workspace cleared")
 
             val cleanName = name.trim()
             val cleanProgram = program.trim()
@@ -78,6 +94,9 @@ class FirebaseAuthRepository @Inject constructor(
 
             runCatching {
                 saveCloudProfile(user, profile)
+                AuthDebugLog.d("REGISTER Firestore profile saved")
+            }.onFailure {
+                AuthDebugLog.e("REGISTER Firestore profile save failed", it)
             }
 
             userProfileRepository.saveProfile(
@@ -85,13 +104,19 @@ class FirebaseAuthRepository @Inject constructor(
                 name = profile.name,
                 program = profile.program
             )
+            AuthDebugLog.d(
+                "REGISTER local profile saved: uid=${AuthDebugLog.uid(user.uid)}"
+            )
 
-            // The Room workspace is restored once after this explicit login.
-            // Reopening the app does not trigger another network restore.
             userProfileRepository.markCloudRestorePending()
+            AuthDebugLog.d("REGISTER restorePending=true")
 
             Result.success(profile)
         } catch (error: Throwable) {
+            AuthDebugLog.e(
+                "REGISTER failed: ${error::class.simpleName}: ${error.message}",
+                error
+            )
             auth.signOut()
             userProfileRepository.clearProfile()
             Result.failure(error)
@@ -102,6 +127,7 @@ class FirebaseAuthRepository @Inject constructor(
         email: String,
         password: String
     ): Result<UserProfile> {
+        AuthDebugLog.d("EMAIL_LOGIN start")
         return try {
             val authResult = auth
                 .signInWithEmailAndPassword(
@@ -113,8 +139,16 @@ class FirebaseAuthRepository @Inject constructor(
             val user = authResult.user
                 ?: error("Akun tidak ditemukan.")
 
+            AuthDebugLog.d(
+                "EMAIL_LOGIN Firebase success: uid=${AuthDebugLog.uid(user.uid)}"
+            )
+
             val profile = runCatching {
                 loadCloudProfile(user)
+            }.onSuccess {
+                AuthDebugLog.d("EMAIL_LOGIN Firestore profile loaded")
+            }.onFailure {
+                AuthDebugLog.e("EMAIL_LOGIN Firestore profile load failed; using fallback", it)
             }.getOrElse {
                 cachedOrFirebaseProfile(user)
             }
@@ -124,11 +158,19 @@ class FirebaseAuthRepository @Inject constructor(
                 name = profile.name,
                 program = profile.program
             )
+            AuthDebugLog.d(
+                "EMAIL_LOGIN local profile saved: uid=${AuthDebugLog.uid(user.uid)}"
+            )
 
             userProfileRepository.markCloudRestorePending()
+            AuthDebugLog.d("EMAIL_LOGIN restorePending=true")
 
             Result.success(profile)
         } catch (error: Throwable) {
+            AuthDebugLog.e(
+                "EMAIL_LOGIN failed: ${error::class.simpleName}: ${error.message}",
+                error
+            )
             auth.signOut()
             userProfileRepository.clearProfile()
             Result.failure(error)
@@ -138,6 +180,7 @@ class FirebaseAuthRepository @Inject constructor(
     suspend fun signInWithGoogle(
         context: Context
     ): Result<UserProfile> {
+        AuthDebugLog.d("GOOGLE_LOGIN start")
         return try {
             val credentialManager = CredentialManager.create(context)
 
@@ -159,6 +202,7 @@ class FirebaseAuthRepository @Inject constructor(
                 context,
                 request
             )
+            AuthDebugLog.d("GOOGLE_LOGIN credential received")
 
             val googleCredential = GoogleIdTokenCredential.createFrom(
                 result.credential.data
@@ -176,8 +220,16 @@ class FirebaseAuthRepository @Inject constructor(
             val user = authResult.user
                 ?: error("Akun Google tidak berhasil masuk.")
 
+            AuthDebugLog.d(
+                "GOOGLE_LOGIN Firebase success: uid=${AuthDebugLog.uid(user.uid)}"
+            )
+
             val existingProfile = runCatching {
                 loadCloudProfile(user)
+            }.onSuccess {
+                AuthDebugLog.d("GOOGLE_LOGIN Firestore profile loaded")
+            }.onFailure {
+                AuthDebugLog.e("GOOGLE_LOGIN Firestore profile load failed", it)
             }.getOrNull()
 
             val profile = existingProfile
@@ -200,6 +252,9 @@ class FirebaseAuthRepository @Inject constructor(
             if (existingProfile == null) {
                 runCatching {
                     saveCloudProfile(user, profile)
+                    AuthDebugLog.d("GOOGLE_LOGIN new Firestore profile saved")
+                }.onFailure {
+                    AuthDebugLog.e("GOOGLE_LOGIN new Firestore profile save failed", it)
                 }
             }
 
@@ -208,11 +263,19 @@ class FirebaseAuthRepository @Inject constructor(
                 name = profile.name,
                 program = profile.program
             )
+            AuthDebugLog.d(
+                "GOOGLE_LOGIN local profile saved: uid=${AuthDebugLog.uid(user.uid)}"
+            )
 
             userProfileRepository.markCloudRestorePending()
+            AuthDebugLog.d("GOOGLE_LOGIN restorePending=true")
 
             Result.success(profile)
         } catch (error: Throwable) {
+            AuthDebugLog.e(
+                "GOOGLE_LOGIN failed: ${error::class.simpleName}: ${error.message}",
+                error
+            )
             auth.signOut()
             userProfileRepository.clearProfile()
             Result.failure(error)
@@ -223,8 +286,10 @@ class FirebaseAuthRepository @Inject constructor(
         name: String,
         program: String
     ): Result<UserProfile> {
+        AuthDebugLog.d("GUEST start")
         return runCatching {
             cloudDataSyncRepository.clearLocalSessionData()
+            AuthDebugLog.d("GUEST local workspace cleared")
 
             val profile = UserProfile(
                 name = name.trim(),
@@ -236,6 +301,7 @@ class FirebaseAuthRepository @Inject constructor(
             }
 
             auth.signOut()
+            AuthDebugLog.d("GUEST Firebase signOut executed")
 
             userProfileRepository.saveGuestProfile(
                 name = profile.name,
@@ -243,12 +309,21 @@ class FirebaseAuthRepository @Inject constructor(
             )
 
             userProfileRepository.clearCloudRestorePending()
+            AuthDebugLog.d("GUEST local profile saved; restorePending=false")
 
             profile
+        }.onSuccess {
+            AuthDebugLog.d("GUEST success")
+        }.onFailure {
+            AuthDebugLog.e("GUEST failed", it)
         }
     }
 
     suspend fun reloadProfile(): Result<UserProfile> {
+        AuthDebugLog.d(
+            "RELOAD_PROFILE start: uid=${AuthDebugLog.uid(auth.currentUser?.uid)}"
+        )
+
         val user = auth.currentUser
             ?: return Result.failure(
                 IllegalStateException("Belum ada pengguna yang login.")
@@ -272,11 +347,16 @@ class FirebaseAuthRepository @Inject constructor(
                 program = profile.program
             )
 
+            AuthDebugLog.d(
+                "RELOAD_PROFILE success: uid=${AuthDebugLog.uid(refreshedUser.uid)}"
+            )
             Result.success(profile)
         } catch (error: Throwable) {
+            AuthDebugLog.e("RELOAD_PROFILE failed", error)
             val cached = userProfileRepository.profile.first()
 
             if (cached != null) {
+                AuthDebugLog.d("RELOAD_PROFILE using cached profile")
                 Result.success(cached)
             } else {
                 Result.failure(error)
@@ -285,12 +365,21 @@ class FirebaseAuthRepository @Inject constructor(
     }
 
     suspend fun clearLocalSession() {
+        AuthDebugLog.d(
+            "LOGOUT start: currentUid=${AuthDebugLog.uid(auth.currentUser?.uid)}"
+        )
         cloudDataSyncRepository.clearLocalSessionData()
+        AuthDebugLog.d("LOGOUT local workspace cleared")
         userProfileRepository.clearProfile()
+        AuthDebugLog.d("LOGOUT local profile cleared")
         auth.signOut()
+        AuthDebugLog.d("LOGOUT Firebase signOut executed")
     }
 
     fun signOut() {
+        AuthDebugLog.d(
+            "SIGN_OUT direct call: currentUid=${AuthDebugLog.uid(auth.currentUser?.uid)}"
+        )
         auth.signOut()
     }
 
@@ -351,9 +440,15 @@ class FirebaseAuthRepository @Inject constructor(
         val cachedProfile = userProfileRepository.profile.first()
 
         if (cachedUid == user.uid && cachedProfile != null) {
+            AuthDebugLog.d(
+                "PROFILE_FALLBACK using cached profile for uid=${AuthDebugLog.uid(user.uid)}"
+            )
             return cachedProfile
         }
 
+        AuthDebugLog.d(
+            "PROFILE_FALLBACK using Firebase displayName for uid=${AuthDebugLog.uid(user.uid)}"
+        )
         return UserProfile(
             name = user.displayName
                 ?.trim()
