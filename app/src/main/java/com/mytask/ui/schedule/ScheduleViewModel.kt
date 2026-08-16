@@ -56,9 +56,17 @@ class ScheduleViewModel @Inject constructor(
                     room = room
                 )
             )
-            scheduleRepository.getScheduleById(id).stateIn(this).value?.let {
-                ReminderScheduler.scheduleScheduleReminder(context, it)
-            }
+            ReminderScheduler.scheduleScheduleReminder(
+                context,
+                ScheduleEntity(
+                    id = id,
+                    courseId = courseId,
+                    dayOfWeek = dayOfWeek,
+                    startMinutes = startMinutes,
+                    endMinutes = endMinutes,
+                    room = room
+                )
+            )
             onSaved()
         }
     }
