@@ -16,15 +16,12 @@ import com.mytask.data.local.entity.TaskEntity
         CourseEntity::class,
         ScheduleEntity::class
     ],
-    version = 2,
+    version = 3,
     exportSchema = false
 )
 @TypeConverters(Converters::class)
 abstract class MyTaskDatabase : RoomDatabase() {
-
     abstract fun taskDao(): TaskDao
-
     abstract fun courseDao(): CourseDao
-
     abstract fun scheduleDao(): ScheduleDao
 }
