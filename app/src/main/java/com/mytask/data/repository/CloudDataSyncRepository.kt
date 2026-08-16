@@ -11,6 +11,7 @@ import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.debounce
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.tasks.await
 import org.json.JSONArray
 import org.json.JSONObject
@@ -54,7 +55,7 @@ class CloudDataSyncRepository @Inject constructor(
         val cloudJson = snapshot.getString("dataJson")
 
         return if (cloudJson.isNullOrBlank()) {
-            val localJson = databaseJson.firstValue()
+            val localJson = databaseJson.first()
             uploadJson(uid, localJson)
             false
         } else {
@@ -65,7 +66,7 @@ class CloudDataSyncRepository @Inject constructor(
     }
 
     suspend fun uploadCurrentData(uid: String) {
-        val json = databaseJson.firstValue()
+        val json = databaseJson.first()
         uploadJson(uid, json)
     }
 
@@ -84,7 +85,7 @@ class CloudDataSyncRepository @Inject constructor(
     }
 
     suspend fun exportLocalJson(uid: String): File {
-        val json = databaseJson.firstValue()
+        val json = databaseJson.first()
         saveLocalJson(uid, json)
         return localFile(uid)
     }
@@ -294,7 +295,4 @@ class CloudDataSyncRepository @Inject constructor(
             Charsets.UTF_8
         )
     }
-
-    private suspend fun Flow<String>.firstValue(): String =
-        kotlinx.coroutines.flow.first()
 }
