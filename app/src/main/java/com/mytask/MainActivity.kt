@@ -131,15 +131,13 @@ private fun MyTaskApp(
         TemplatePreferenceRepository(context)
     }
 
-    val firebaseUser by
-        authRepository.authState.collectAsState(
-            initial = authRepository.currentUser
-        )
+    val firebaseUser by authRepository.authState.collectAsState(
+        initial = authRepository.currentUser
+    )
 
-    val localProfile by
-        userProfileRepository.profile.collectAsState(
-            initial = null
-        )
+    val localProfile by userProfileRepository.profile.collectAsState(
+        initial = null
+    )
 
     var accountProfile by remember {
         mutableStateOf<UserProfile?>(null)
@@ -204,8 +202,7 @@ private fun MyTaskApp(
             return@LaunchedEffect
         }
 
-        cloudDataSyncRepository
-            .databaseJson
+        cloudDataSyncRepository.databaseJson
             .debounce(1200)
             .collectLatest { json ->
                 runCatching {
@@ -217,12 +214,11 @@ private fun MyTaskApp(
             }
     }
 
-    val profile =
-        if (firebaseUser != null) {
-            accountProfile
-        } else {
-            localProfile
-        }
+    val profile = if (firebaseUser != null) {
+        accountProfile
+    } else {
+        localProfile
+    }
 
     val sessionIsReady =
         (firebaseUser != null && accountProfile != null && !accountLoading) ||
@@ -243,7 +239,7 @@ private fun MyTaskApp(
         return
     }
 
-    if (profile == null) {
+    val activeProfile = profile ?: run {
         LoginScreen(
             authRepository = authRepository
         )
@@ -253,18 +249,18 @@ private fun MyTaskApp(
     val templateUid = firebaseUser?.uid ?: "guest"
 
     val promptFlow = remember(templateUid) {
-        templatePreferenceRepository
-            .promptShown(templateUid)
+        templatePreferenceRepository.promptShown(templateUid)
     }
 
-    val templatePromptShown by
-        promptFlow.collectAsState(initial = false)
+    val templatePromptShown by promptFlow.collectAsState(
+        initial = false
+    )
 
     Box(
         modifier = Modifier.fillMaxSize()
     ) {
         MyTaskMainContent(
-            profile = profile,
+            profile = activeProfile,
             authRepository = authRepository
         )
 
@@ -290,10 +286,9 @@ private fun MyTaskApp(
                                 templateDataImporter.importTemplate()
 
                                 if (firebaseUser != null) {
-                                    cloudDataSyncRepository
-                                        .uploadCurrentData(
-                                            firebaseUser.uid
-                                        )
+                                    cloudDataSyncRepository.uploadCurrentData(
+                                        firebaseUser.uid
+                                    )
                                 }
                             }.onSuccess {
                                 templatePreferenceRepository
@@ -329,11 +324,8 @@ private fun MyTaskMainContent(
 
     val currentPage = pagerState.currentPage
 
-    val backStackEntry by
-        navController.currentBackStackEntryAsState()
-
-    val currentRoute =
-        backStackEntry?.destination?.route
+    val backStackEntry by navController.currentBackStackEntryAsState()
+    val currentRoute = backStackEntry?.destination?.route
 
     val isSubScreen =
         currentRoute == Screen.AddTask.route ||
@@ -444,9 +436,9 @@ private fun MyTaskMainContent(
             }
         }
     ) { paddingValues ->
-
-        Box(modifier = Modifier.fillMaxSize()) {
-
+        Box(
+            modifier = Modifier.fillMaxSize()
+        ) {
             NavGraph(
                 navController = navController,
                 paddingValues = paddingValues,
@@ -464,7 +456,6 @@ private fun MyTaskMainContent(
                         .zIndex(1f),
                     beyondViewportPageCount = 1
                 ) { page ->
-
                     when (page) {
                         0 -> {
                             DashboardScreen(
@@ -569,7 +560,7 @@ private fun MyTaskMainContent(
                         }
                     }
                 }
-            )
+            }
         }
     }
 }
