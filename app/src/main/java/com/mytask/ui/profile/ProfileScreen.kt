@@ -3,6 +3,7 @@
 package com.mytask.ui.profile
 
 import android.content.Context
+import android.content.Intent
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -450,6 +451,20 @@ fun ProfileScreen(
             AboutRow(
                 icon = Icons.Default.Person,
                 label = "MyTask Academic Planner\napp by Furqon Ramadhani"
+            )
+
+            ProfileMenuCard(
+                icon = Icons.Default.Person,
+                title = "Instagram",
+                description = "@ramadhani.frqn",
+                onClick = {
+                    context.startActivity(
+                        Intent(
+                            Intent.ACTION_VIEW,
+                            Uri.parse("https://www.instagram.com/ramadhani.frqn")
+                        )
+                    )
+                }
             )
 
             Spacer(Modifier.height(24.dp))
