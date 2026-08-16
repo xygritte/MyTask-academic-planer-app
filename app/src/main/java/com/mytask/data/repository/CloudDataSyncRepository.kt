@@ -75,8 +75,6 @@ class CloudDataSyncRepository @Inject constructor(
         }
 
         return try {
-            // IMPORTANT: do not clear Room before the cloud request succeeds.
-            // A failed restore must never erase a valid offline workspace.
             val snapshot = withTimeout(CLOUD_TIMEOUT_MS) {
                 document(uid)
                     .get()
@@ -88,10 +86,6 @@ class CloudDataSyncRepository @Inject constructor(
                 ?.takeIf { it.isNotBlank() }
 
             if (cloudJson == null) {
-                // A freshly created account has no cloud backup. In that case
-                // start with a clean local workspace. Logout already clears the
-                // normal account-switch path, but this also protects against a
-                // stale local workspace after an interrupted login.
                 clearLocalAcademicData()
                 NotificationHelper.cancelAllAppNotifications(context)
                 ReminderScheduler.cancel(context)
@@ -123,10 +117,6 @@ class CloudDataSyncRepository @Inject constructor(
                 error
             )
 
-            // A cloud restore failure must never leave an authenticated user
-            // inside an empty or partially restored workspace. Clear all local
-            // session data and terminate the Firebase session so MainActivity's
-            // auth-state listener returns the app to LoginScreen.
             runCatching {
                 clearLocalSessionData()
                 userProfileRepository.clearProfile()
@@ -317,6 +307,7 @@ class CloudDataSyncRepository @Inject constructor(
                         put("deadline", task.deadline?.time ?: JSONObject.NULL)
                         put("priority", task.priority)
                         put("isCompleted", task.isCompleted)
+                        put("completedAt", task.completedAt?.time ?: JSONObject.NULL)
                     })
                 }
             })
@@ -361,6 +352,11 @@ class CloudDataSyncRepository @Inject constructor(
                 val item = array.getJSONObject(index)
                 val courseId = if (item.isNull("courseId")) null else item.optLong("courseId")
                 val deadline = if (item.isNull("deadline")) null else Date(item.optLong("deadline"))
+                val completedAt = if (item.isNull("completedAt")) {
+                    null
+                } else {
+                    Date(item.optLong("completedAt"))
+                }
                 add(
                     TaskEntity(
                         id = item.optLong("id", 0L),
@@ -369,7 +365,8 @@ class CloudDataSyncRepository @Inject constructor(
                         description = item.optString("description"),
                         deadline = deadline,
                         priority = item.optInt("priority", 1),
-                        isCompleted = item.optBoolean("isCompleted", false)
+                        isCompleted = item.optBoolean("isCompleted", false),
+                        completedAt = completedAt
                     )
                 )
             }
