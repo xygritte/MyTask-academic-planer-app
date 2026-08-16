@@ -2,6 +2,7 @@ package com.mytask.ui.login
 
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -299,18 +300,14 @@ fun LoginScreen(
                                 errorMessage = null
                             },
                             modifier = Modifier.fillMaxWidth(),
-                            label = {
-                                Text("Nama Mahasiswa")
-                            },
+                            label = { Text("Nama Mahasiswa") },
                             leadingIcon = {
                                 Icon(
                                     imageVector = Icons.Default.PersonOutline,
                                     contentDescription = null
                                 )
                             },
-                            placeholder = {
-                                Text("Nama lengkap")
-                            },
+                            placeholder = { Text("Nama lengkap") },
                             singleLine = true,
                             shape = RoundedCornerShape(16.dp),
                             colors = authFieldColors()
@@ -327,18 +324,14 @@ fun LoginScreen(
                                 errorMessage = null
                             },
                             modifier = Modifier.fillMaxWidth(),
-                            label = {
-                                Text("Program Studi")
-                            },
+                            label = { Text("Program Studi") },
                             leadingIcon = {
                                 Icon(
                                     imageVector = Icons.Default.School,
                                     contentDescription = null
                                 )
                             },
-                            placeholder = {
-                                Text("Contoh: Teknik Informatika")
-                            },
+                            placeholder = { Text("Contoh: Teknik Informatika") },
                             singleLine = true,
                             shape = RoundedCornerShape(16.dp),
                             colors = authFieldColors()
@@ -356,18 +349,14 @@ fun LoginScreen(
                             errorMessage = null
                         },
                         modifier = Modifier.fillMaxWidth(),
-                        label = {
-                            Text("Email")
-                        },
+                        label = { Text("Email") },
                         leadingIcon = {
                             Icon(
                                 imageVector = Icons.Default.Email,
                                 contentDescription = null
                             )
                         },
-                        placeholder = {
-                            Text("nama@email.com")
-                        },
+                        placeholder = { Text("nama@email.com") },
                         keyboardOptions = KeyboardOptions(
                             keyboardType = KeyboardType.Email
                         ),
@@ -387,9 +376,7 @@ fun LoginScreen(
                             errorMessage = null
                         },
                         modifier = Modifier.fillMaxWidth(),
-                        label = {
-                            Text("Password")
-                        },
+                        label = { Text("Password") },
                         leadingIcon = {
                             Icon(
                                 imageVector = Icons.Default.Lock,
@@ -408,11 +395,7 @@ fun LoginScreen(
                                     } else {
                                         Icons.Default.Visibility
                                     },
-                                    contentDescription = if (passwordVisible) {
-                                        "Sembunyikan password"
-                                    } else {
-                                        "Tampilkan password"
-                                    }
+                                    contentDescription = null
                                 )
                             }
                         },
@@ -442,9 +425,7 @@ fun LoginScreen(
                                 errorMessage = null
                             },
                             modifier = Modifier.fillMaxWidth(),
-                            label = {
-                                Text("Konfirmasi Password")
-                            },
+                            label = { Text("Konfirmasi Password") },
                             leadingIcon = {
                                 Icon(
                                     imageVector = Icons.Default.Lock,
@@ -463,11 +444,7 @@ fun LoginScreen(
                                         } else {
                                             Icons.Default.Visibility
                                         },
-                                        contentDescription = if (confirmPasswordVisible) {
-                                            "Sembunyikan password"
-                                        } else {
-                                            "Tampilkan password"
-                                        }
+                                        contentDescription = null
                                     )
                                 }
                             },
@@ -521,16 +498,11 @@ fun LoginScreen(
                             contentColor = MaterialTheme.colorScheme.onPrimary
                         )
                     ) {
-
                         Icon(
                             imageVector = Icons.Default.Login,
                             contentDescription = null
                         )
-
-                        Spacer(
-                            Modifier.width(10.dp)
-                        )
-
+                        Spacer(Modifier.width(10.dp))
                         Text(
                             text = when {
                                 isLoading -> "Memproses..."
@@ -546,11 +518,22 @@ fun LoginScreen(
                     )
 
                     Row(
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(12.dp))
+                            .clickable {
+                                switchMode(
+                                    if (mode == AuthMode.LOGIN) {
+                                        AuthMode.REGISTER
+                                    } else {
+                                        AuthMode.LOGIN
+                                    }
+                                )
+                            }
+                            .padding(10.dp),
                         horizontalArrangement = Arrangement.Center,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-
                         Text(
                             text = if (mode == AuthMode.LOGIN) {
                                 "Belum punya akun?"
@@ -574,7 +557,7 @@ fun LoginScreen(
                     }
 
                     Spacer(
-                        Modifier.height(14.dp)
+                        Modifier.height(8.dp)
                     )
 
                     Surface(
@@ -583,7 +566,7 @@ fun LoginScreen(
                         modifier = Modifier.fillMaxWidth()
                     ) {
                         Text(
-                            text = "Akun digunakan untuk menjaga sesi login dan menghubungkan profil mahasiswa kamu.",
+                            text = "Sesi login dan profil akun dikelola oleh Firebase Authentication.",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             modifier = Modifier.padding(12.dp)
@@ -596,19 +579,6 @@ fun LoginScreen(
                 Modifier.height(28.dp)
             )
         }
-    }
-
-    // Area teks switch dibuat sebagai overlay klik supaya seluruh label mudah disentuh.
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(bottom = 70.dp),
-        contentAlignment = Alignment.BottomCenter
-    ) {
-        Surface(
-            color = MaterialTheme.colorScheme.transparentColor(),
-            modifier = Modifier.size(1.dp)
-        ) {}
     }
 }
 
@@ -631,24 +601,21 @@ private fun authFieldColors() =
 private fun friendlyFirebaseError(
     message: String?
 ): String {
-
     return when {
         message.isNullOrBlank() ->
             "Terjadi kesalahan. Coba lagi."
 
-        message.contains("The email address is badly formatted", ignoreCase = true) ->
+        message.contains("badly formatted", ignoreCase = true) ->
             "Format email tidak valid."
 
-        message.contains("password is invalid", ignoreCase = true) ||
-            message.contains("auth/invalid-credential", ignoreCase = true) ->
+        message.contains("invalid-credential", ignoreCase = true) ||
+            message.contains("password is invalid", ignoreCase = true) ->
             "Email atau password salah."
 
-        message.contains("no user record", ignoreCase = true) ||
-            message.contains("user-not-found", ignoreCase = true) ->
+        message.contains("user-not-found", ignoreCase = true) ->
             "Akun dengan email tersebut belum terdaftar."
 
-        message.contains("email address is already in use", ignoreCase = true) ||
-            message.contains("email-already-in-use", ignoreCase = true) ->
+        message.contains("email-already-in-use", ignoreCase = true) ->
             "Email tersebut sudah digunakan."
 
         message.contains("network", ignoreCase = true) ->
@@ -658,6 +625,3 @@ private fun friendlyFirebaseError(
             "Tidak dapat memproses permintaan. Coba lagi."
     }
 }
-
-private fun androidx.compose.material3.ColorScheme.transparentColor() =
-    this.background.copy(alpha = 0f)
