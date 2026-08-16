@@ -13,20 +13,13 @@ class TaskRepository @Inject constructor(
     private val taskDao: TaskDao
 ) {
 
-    fun getAllTasks(): Flow<List<TaskEntity>> {
-        return taskDao.getAllTasks()
-    }
+    fun getAllTasks(): Flow<List<TaskEntity>> = taskDao.getAllTasks()
 
-    fun getTaskById(id: Long): Flow<TaskEntity?> {
-        return taskDao.getTaskById(id)
-    }
+    fun getTaskById(id: Long): Flow<TaskEntity?> = taskDao.getTaskById(id)
 
-    fun getActiveTaskCount(): Flow<Int> {
-        return taskDao.getActiveTaskCount()
-    }
+    fun getActiveTaskCount(): Flow<Int> = taskDao.getActiveTaskCount()
 
     fun getTodayDeadlineCount(): Flow<Int> {
-
         val start = Calendar.getInstance().apply {
             set(Calendar.HOUR_OF_DAY, 0)
             set(Calendar.MINUTE, 0)
@@ -45,26 +38,17 @@ class TaskRepository @Inject constructor(
     }
 
     fun getUpcomingDeadlines(): Flow<List<TaskEntity>> {
-
         val now = Date()
-
         val end = Calendar.getInstance().apply {
             time = now
             add(Calendar.DAY_OF_YEAR, 7)
         }.time
-
         return taskDao.getPendingTasksBetween(now, end)
     }
 
-    suspend fun addTask(task: TaskEntity) {
-        taskDao.insert(task)
-    }
+    suspend fun addTask(task: TaskEntity): Long = taskDao.insert(task)
 
-    suspend fun updateTask(task: TaskEntity) {
-        taskDao.update(task)
-    }
+    suspend fun updateTask(task: TaskEntity) = taskDao.update(task)
 
-    suspend fun deleteTask(task: TaskEntity) {
-        taskDao.delete(task)
-    }
+    suspend fun deleteTask(task: TaskEntity) = taskDao.delete(task)
 }
