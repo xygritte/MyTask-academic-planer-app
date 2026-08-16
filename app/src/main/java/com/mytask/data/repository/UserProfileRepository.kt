@@ -90,15 +90,37 @@ class UserProfileRepository @Inject constructor(
         )
     }
 
+    /**
+     * Atomically commits the authenticated local session and marks that this
+     * login should perform one cloud restore. This prevents MainActivity from
+     * observing the UID before the restorePending flag is available.
+     */
+    suspend fun saveAuthenticatedSession(
+        uid: String,
+        name: String,
+        program: String
+    ) {
+        context.userProfileDataStore.edit { preferences ->
+            preferences[UID_KEY] = uid.trim()
+            preferences[NAME_KEY] = name.trim()
+            preferences[PROGRAM_KEY] = program.trim()
+            preferences[RESTORE_PENDING_KEY] = true
+        }
+        AuthDebugLog.d(
+            "PROFILE_STORE authenticated session committed atomically: uid=${AuthDebugLog.uid(uid)} restorePending=true"
+        )
+    }
+
     suspend fun saveGuestProfile(
         name: String,
         program: String
     ) {
-        saveProfile(
-            uid = "guest",
-            name = name,
-            program = program
-        )
+        context.userProfileDataStore.edit { preferences ->
+            preferences[UID_KEY] = "guest"
+            preferences[NAME_KEY] = name.trim()
+            preferences[PROGRAM_KEY] = program.trim()
+            preferences[RESTORE_PENDING_KEY] = false
+        }
         AuthDebugLog.d("PROFILE_STORE guest profile saved")
     }
 
