@@ -551,17 +551,13 @@ fun ProfileScreen(
                                 "updatedAt" to System.currentTimeMillis()
                             )
 
+                            // Keep profile data in one Firestore document only.
+                            // This avoids a second write to users/{uid}/profile/current,
+                            // which requires a separate subcollection security rule and was
+                            // the source of the previous PERMISSION_DENIED error.
                             FirebaseFirestore.getInstance()
                                 .collection("users")
                                 .document(firebaseUser.uid)
-                                .set(profileData, SetOptions.merge())
-                                .await()
-
-                            FirebaseFirestore.getInstance()
-                                .collection("users")
-                                .document(firebaseUser.uid)
-                                .collection("profile")
-                                .document("current")
                                 .set(profileData, SetOptions.merge())
                                 .await()
 
@@ -602,137 +598,31 @@ fun ProfileScreen(
 }
 
 @Composable
-private fun EditProfileDialog(
-    initialName: String,
-    initialProgram: String,
-    isSaving: Boolean,
-    errorMessage: String?,
-    onDismiss: () -> Unit,
-    onSave: (String, String) -> Unit
-) {
-    var name by remember(initialName) { mutableStateOf(initialName) }
-    var program by remember(initialProgram) { mutableStateOf(initialProgram) }
-
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        icon = {
-            Icon(
-                imageVector = Icons.Default.Edit,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.primary
-            )
-        },
-        title = {
-            Text(
-                text = "Edit profil",
-                fontWeight = FontWeight.Bold
-            )
-        },
-        text = {
-            Column(
-                verticalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                OutlinedTextField(
-                    value = name,
-                    onValueChange = { name = it },
-                    modifier = Modifier.fillMaxWidth(),
-                    label = { Text("Nama mahasiswa") },
-                    singleLine = true,
-                    enabled = !isSaving
-                )
-
-                OutlinedTextField(
-                    value = program,
-                    onValueChange = { program = it },
-                    modifier = Modifier.fillMaxWidth(),
-                    label = { Text("Program studi") },
-                    singleLine = true,
-                    enabled = !isSaving
-                )
-
-                if (!errorMessage.isNullOrBlank()) {
-                    Text(
-                        text = errorMessage,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.error
-                    )
-                }
-            }
-        },
-        confirmButton = {
-            Button(
-                onClick = {
-                    onSave(name, program)
-                },
-                enabled = !isSaving &&
-                    name.trim().isNotBlank() &&
-                    program.trim().isNotBlank()
-            ) {
-                if (isSaving) {
-                    CircularProgressIndicator(
-                        modifier = Modifier.size(18.dp),
-                        strokeWidth = 2.dp,
-                        color = MaterialTheme.colorScheme.onPrimary
-                    )
-                    Spacer(Modifier.size(8.dp))
-                }
-                Text(if (isSaving) "Menyimpan..." else "Simpan")
-            }
-        },
-        dismissButton = {
-            OutlinedButton(
-                onClick = onDismiss,
-                enabled = !isSaving
-            ) {
-                Text("Batal")
-            }
-        }
-    )
-}
-
-@Composable
 private fun ProfileMenuCard(
     icon: androidx.compose.ui.graphics.vector.ImageVector,
     title: String,
     description: String,
     onClick: () -> Unit,
-    destructive: Boolean = false,
-    enabled: Boolean = true
+    enabled: Boolean = true,
+    destructive: Boolean = false
 ) {
-    val accent = if (destructive) {
+    val contentColor = if (destructive) {
         MaterialTheme.colorScheme.error
     } else {
         MaterialTheme.colorScheme.primary
     }
 
-    val iconBackground = if (destructive) {
-        MaterialTheme.colorScheme.errorContainer
-    } else {
-        MaterialTheme.colorScheme.secondaryContainer
-    }
-
-    val iconOnBackground = if (destructive) {
-        MaterialTheme.colorScheme.onErrorContainer
-    } else {
-        MaterialTheme.colorScheme.primary
-    }
-
-    val contentAlpha = if (enabled) 1f else 0.48f
-
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable(
-                enabled = enabled,
-                onClick = onClick
-            ),
+            .clickable(enabled = enabled, onClick = onClick),
         shape = MaterialTheme.shapes.large,
         colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surface
+            containerColor = if (enabled) MaterialTheme.colorScheme.surface else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)
         ),
         border = BorderStroke(
             1.dp,
-            MaterialTheme.colorScheme.outline.copy(alpha = 0.45f)
+            MaterialTheme.colorScheme.outline.copy(alpha = if (enabled) 0.4f else 0.2f)
         )
     ) {
         Row(
@@ -742,52 +632,45 @@ private fun ProfileMenuCard(
             verticalAlignment = Alignment.CenterVertically
         ) {
             Surface(
-                modifier = Modifier.size(44.dp),
+                modifier = Modifier.size(42.dp),
                 shape = RoundedCornerShape(12.dp),
-                color = iconBackground.copy(alpha = contentAlpha)
+                color = if (destructive) {
+                    MaterialTheme.colorScheme.errorContainer
+                } else {
+                    MaterialTheme.colorScheme.secondaryContainer
+                }
             ) {
-                Icon(
-                    imageVector = icon,
-                    contentDescription = null,
-                    tint = iconOnBackground.copy(alpha = contentAlpha),
-                    modifier = Modifier.padding(10.dp)
-                )
+                Box(contentAlignment = Alignment.Center) {
+                    Icon(
+                        imageVector = icon,
+                        contentDescription = null,
+                        tint = contentColor.copy(alpha = if (enabled) 1f else 0.45f)
+                    )
+                }
             }
 
-            Spacer(Modifier.size(14.dp))
+            Spacer(Modifier.size(12.dp))
 
-            Column(
-                modifier = Modifier.weight(1f)
-            ) {
+            Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    text = title,
+                    title,
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.SemiBold,
-                    color = if (destructive) {
-                        accent.copy(alpha = contentAlpha)
-                    } else {
-                        MaterialTheme.colorScheme.onSurface.copy(alpha = contentAlpha)
-                    }
+                    color = if (enabled) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.45f)
                 )
-
                 Spacer(Modifier.height(2.dp))
-
                 Text(
-                    text = description,
+                    description,
                     style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(
-                        alpha = contentAlpha
-                    )
+                    color = if (enabled) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.45f)
                 )
             }
 
             Icon(
                 imageVector = Icons.Default.ArrowForwardIos,
-                contentDescription = "Buka",
-                modifier = Modifier.size(16.dp),
-                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(
-                    alpha = contentAlpha
-                )
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = if (enabled) 0.75f else 0.35f),
+                modifier = Modifier.size(16.dp)
             )
         }
     }
@@ -804,19 +687,93 @@ private fun AboutRow(
             .padding(vertical = 2.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Icon(
-            imageVector = icon,
-            contentDescription = null,
-            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.size(20.dp)
-        )
-
-        Spacer(Modifier.size(10.dp))
-
+        Surface(
+            modifier = Modifier.size(38.dp),
+            shape = RoundedCornerShape(11.dp),
+            color = MaterialTheme.colorScheme.secondaryContainer
+        ) {
+            Box(contentAlignment = Alignment.Center) {
+                Icon(
+                    imageVector = icon,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary
+                )
+            }
+        }
+        Spacer(Modifier.size(12.dp))
         Text(
             text = label,
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
     }
+}
+
+@Composable
+private fun EditProfileDialog(
+    initialName: String,
+    initialProgram: String,
+    isSaving: Boolean,
+    errorMessage: String?,
+    onDismiss: () -> Unit,
+    onSave: (name: String, program: String) -> Unit
+) {
+    var name by remember(initialName) { mutableStateOf(initialName) }
+    var program by remember(initialProgram) { mutableStateOf(initialProgram) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Edit profil") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                OutlinedTextField(
+                    value = name,
+                    onValueChange = { name = it },
+                    label = { Text("Nama") },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                    enabled = !isSaving
+                )
+                OutlinedTextField(
+                    value = program,
+                    onValueChange = { program = it },
+                    label = { Text("Program Studi") },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                    enabled = !isSaving
+                )
+
+                if (errorMessage != null) {
+                    Text(
+                        text = errorMessage,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.error
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = { onSave(name, program) },
+                enabled = !isSaving
+            ) {
+                if (isSaving) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(18.dp),
+                        strokeWidth = 2.dp
+                    )
+                } else {
+                    Text("Simpan")
+                }
+            }
+        },
+        dismissButton = {
+            OutlinedButton(
+                onClick = onDismiss,
+                enabled = !isSaving
+            ) {
+                Text("Batal")
+            }
+        }
+    )
 }
