@@ -139,8 +139,12 @@ private fun MyTaskApp(
     val currentLocalProfile = localProfile
     val currentFirebaseUser = firebaseUser
 
-    var accountProfile by remember {
+    var sessionProfile by remember {
         mutableStateOf<UserProfile?>(null)
+    }
+
+    var sessionUid by remember {
+        mutableStateOf<String?>(null)
     }
 
     var accountLoading by remember {
@@ -170,19 +174,34 @@ private fun MyTaskApp(
         minimumLoading = false
     }
 
+    // Recover the locally persisted session first. This prevents the UI from
+    // flashing back to Login while Firebase/AuthState or DataStore is settling.
+    LaunchedEffect(currentLocalProfile) {
+        val profile = currentLocalProfile
+        val uid = runCatching {
+            userProfileRepository.uid.first()
+        }.getOrNull()
+
+        if (profile != null && uid != null) {
+            sessionProfile = profile
+            sessionUid = uid
+        }
+    }
+
     LaunchedEffect(currentFirebaseUser?.uid) {
         val user = currentFirebaseUser
 
         accountLoading = user != null
         syncReady = false
-        accountProfile = null
 
         if (user != null) {
-            val local = currentLocalProfile
-            val cachedUid = userProfileRepository.uid.first()
+            val cachedProfile = currentLocalProfile
+            val cachedUid = runCatching {
+                userProfileRepository.uid.first()
+            }.getOrNull()
 
             val immediateProfile =
-                local?.takeIf { cachedUid == user.uid }
+                cachedProfile?.takeIf { cachedUid == user.uid }
                     ?: UserProfile(
                         name = user.displayName
                             ?.trim()
@@ -191,13 +210,16 @@ private fun MyTaskApp(
                         program = "Program Studi belum diatur"
                     )
 
-            accountProfile = immediateProfile
+            // Latch the authenticated session immediately. Do not clear this
+            // merely because AuthState emits a transient null during startup.
+            sessionProfile = immediateProfile
+            sessionUid = user.uid
             accountLoading = false
 
             launch {
                 authRepository.reloadProfile()
                     .onSuccess { refreshedProfile ->
-                        accountProfile = refreshedProfile
+                        sessionProfile = refreshedProfile
                     }
             }
 
@@ -207,10 +229,6 @@ private fun MyTaskApp(
                 }
                 syncReady = true
             }
-        } else {
-            accountLoading = false
-            syncReady = false
-            accountProfile = null
         }
     }
 
@@ -233,26 +251,15 @@ private fun MyTaskApp(
             }
     }
 
-    val activeProfile = if (currentFirebaseUser != null) {
-        accountProfile
-            ?: UserProfile(
-                name = currentFirebaseUser.displayName
-                    ?.trim()
-                    ?.takeIf { it.isNotBlank() }
-                    ?: "Mahasiswa",
-                program = "Program Studi belum diatur"
-            )
-    } else {
-        currentLocalProfile
-    }
-
     if (minimumLoading) {
         LoadingScreen()
         return
     }
 
+    val activeProfile = sessionProfile
+
     if (activeProfile != null) {
-        val templateUid = currentFirebaseUser?.uid ?: "guest"
+        val templateUid = sessionUid ?: currentFirebaseUser?.uid ?: "guest"
 
         val promptFlow = remember(templateUid) {
             templatePreferenceRepository.promptShown(templateUid)
@@ -265,9 +272,14 @@ private fun MyTaskApp(
         Box(modifier = Modifier.fillMaxSize()) {
             MyTaskMainContent(
                 profile = activeProfile,
-                authRepository = authRepository
+                authRepository = authRepository,
+                onLoggedOut = {
+                    sessionProfile = null
+                    sessionUid = null
+                }
             )
 
+            // Template is only shown after a session has been established.
             if (!templatePromptShown && !accountLoading) {
                 AcademicTemplateDialog(
                     isApplying = isApplyingTemplate,
@@ -314,6 +326,7 @@ private fun MyTaskApp(
         return
     }
 
+    // Only show Login when there is genuinely no persisted session/profile.
     LoginScreen(
         authRepository = authRepository
     )
@@ -322,7 +335,8 @@ private fun MyTaskApp(
 @Composable
 private fun MyTaskMainContent(
     profile: UserProfile,
-    authRepository: FirebaseAuthRepository
+    authRepository: FirebaseAuthRepository,
+    onLoggedOut: () -> Unit
 ) {
     val navController = rememberNavController()
     val scope = rememberCoroutineScope()
@@ -351,9 +365,7 @@ private fun MyTaskMainContent(
                         onClick = {
                             scope.launch { pagerState.animateScrollToPage(0) }
                         },
-                        icon = {
-                            Icon(Icons.Default.Dashboard, "Dashboard")
-                        },
+                        icon = { Icon(Icons.Default.Dashboard, "Dashboard") },
                         alwaysShowLabel = false
                     )
                     NavigationBarItem(
@@ -361,9 +373,7 @@ private fun MyTaskMainContent(
                         onClick = {
                             scope.launch { pagerState.animateScrollToPage(1) }
                         },
-                        icon = {
-                            Icon(Icons.Default.Task, "Tugas")
-                        },
+                        icon = { Icon(Icons.Default.Task, "Tugas") },
                         alwaysShowLabel = false
                     )
                     NavigationBarItem(
@@ -371,9 +381,7 @@ private fun MyTaskMainContent(
                         onClick = {
                             scope.launch { pagerState.animateScrollToPage(2) }
                         },
-                        icon = {
-                            Icon(Icons.Default.Schedule, "Jadwal")
-                        },
+                        icon = { Icon(Icons.Default.Schedule, "Jadwal") },
                         alwaysShowLabel = false
                     )
                     NavigationBarItem(
@@ -381,9 +389,7 @@ private fun MyTaskMainContent(
                         onClick = {
                             scope.launch { pagerState.animateScrollToPage(3) }
                         },
-                        icon = {
-                            Icon(Icons.Default.CalendarMonth, "Kalender")
-                        },
+                        icon = { Icon(Icons.Default.CalendarMonth, "Kalender") },
                         alwaysShowLabel = false
                     )
                     NavigationBarItem(
@@ -391,9 +397,7 @@ private fun MyTaskMainContent(
                         onClick = {
                             scope.launch { pagerState.animateScrollToPage(4) }
                         },
-                        icon = {
-                            Icon(Icons.Default.MenuBook, "Mata Kuliah")
-                        },
+                        icon = { Icon(Icons.Default.MenuBook, "Mata Kuliah") },
                         alwaysShowLabel = false
                     )
                     NavigationBarItem(
@@ -401,9 +405,7 @@ private fun MyTaskMainContent(
                         onClick = {
                             scope.launch { pagerState.animateScrollToPage(5) }
                         },
-                        icon = {
-                            Icon(Icons.Default.Person, "Profile")
-                        },
+                        icon = { Icon(Icons.Default.Person, "Profile") },
                         alwaysShowLabel = false
                     )
                 }
@@ -443,6 +445,7 @@ private fun MyTaskMainContent(
                                 scope.launch { pagerState.animateScrollToPage(3) }
                             }
                         )
+
                         1 -> TaskListScreen(
                             onAddTask = {
                                 navController.navigate("add_task?taskId=-1")
@@ -451,7 +454,9 @@ private fun MyTaskMainContent(
                                 navController.navigate("add_task?taskId=$id")
                             }
                         )
+
                         2 -> ScheduleScreen()
+
                         3 -> CalendarScreen(
                             onBack = {
                                 scope.launch {
@@ -461,6 +466,7 @@ private fun MyTaskMainContent(
                                 }
                             }
                         )
+
                         4 -> CourseListScreen(
                             onAddCourse = {
                                 navController.navigate("add_course?courseId=-1")
@@ -469,6 +475,7 @@ private fun MyTaskMainContent(
                                 navController.navigate("add_course?courseId=$id")
                             }
                         )
+
                         5 -> ProfileScreen(
                             profile = profile,
                             onBack = {
@@ -488,6 +495,7 @@ private fun MyTaskMainContent(
                             onLogout = {
                                 scope.launch {
                                     authRepository.clearLocalSession()
+                                    onLoggedOut()
                                 }
                             }
                         )
