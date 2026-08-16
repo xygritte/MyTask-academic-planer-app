@@ -7,6 +7,7 @@ import androidx.work.WorkerParameters
 import com.mytask.debug.AppDebugLog
 import com.mytask.data.local.MyTaskDatabase
 import com.mytask.data.local.entity.TaskEntity
+import com.mytask.data.local.toDisplayTime
 import com.mytask.data.repository.SettingsRepository
 import kotlinx.coroutines.flow.first
 import java.util.Calendar
@@ -20,33 +21,18 @@ class DailyReminderWorker(
 
     override suspend fun doWork(): Result {
         AppDebugLog.d("NOTIFICATION", "worker start id=$id")
-
-        val database = Room.databaseBuilder(
-            applicationContext,
-            MyTaskDatabase::class.java,
-            "mytask_db"
-        ).build()
-
+        val database = Room.databaseBuilder(applicationContext, MyTaskDatabase::class.java, "mytask_db").build()
         val settingsRepository = SettingsRepository(applicationContext)
 
         return try {
             NotificationHelper.createChannels(applicationContext)
-
             val tasks = database.taskDao().getAllTasks().first()
             val reminderDays = settingsRepository.taskReminderDays.first()
             val activeTaskNotificationEnabled = settingsRepository.activeTaskNotification.first()
+            AppDebugLog.d("NOTIFICATION", "worker data tasks=${tasks.size} reminderDays=$reminderDays activeTasksNotification=$activeTaskNotificationEnabled")
 
-            AppDebugLog.d(
-                "NOTIFICATION",
-                "worker data tasks=${tasks.size} reminderDays=$reminderDays activeTasksNotification=$activeTaskNotificationEnabled"
-            )
-
-            if (activeTaskNotificationEnabled) {
-                checkActiveTasks(tasks)
-            } else {
-                NotificationHelper.cancelActiveTasksNotification(applicationContext)
-                AppDebugLog.d("NOTIFICATION", "active task notification disabled")
-            }
+            if (activeTaskNotificationEnabled) checkActiveTasks(tasks)
+            else NotificationHelper.cancelActiveTasksNotification(applicationContext)
 
             checkDeadlineTasks(tasks, reminderDays)
             ReminderScheduler.rescheduleAllTaskDeadlines(applicationContext, tasks)
@@ -66,8 +52,6 @@ class DailyReminderWorker(
 
     private fun checkActiveTasks(tasks: List<TaskEntity>) {
         val activeTasks = tasks.filter { !it.isCompleted }
-        AppDebugLog.d("NOTIFICATION", "active task evaluation count=${activeTasks.size}")
-
         if (activeTasks.isEmpty()) {
             NotificationHelper.cancelActiveTasksNotification(applicationContext)
             return
@@ -83,9 +67,7 @@ class DailyReminderWorker(
             }
             if (activeTasks.size > visibleTasks.size) append("\n+ ${activeTasks.size - visibleTasks.size} tugas lainnya")
         }
-
         NotificationHelper.showActiveTasksNotification(applicationContext, message)
-        AppDebugLog.d("NOTIFICATION", "active task notification shown visible=${visibleTasks.size} total=${activeTasks.size}")
     }
 
     private fun checkDeadlineTasks(tasks: List<TaskEntity>, reminderDays: Int) {
@@ -105,7 +87,6 @@ class DailyReminderWorker(
                 time = task.deadline!!
                 resetTime()
             }
-
             val isOverdue = deadlineDay.timeInMillis < today.timeInMillis
             val shouldShow = deadlineDay.timeInMillis <= reminderStart.timeInMillis
 
@@ -116,25 +97,13 @@ class DailyReminderWorker(
 
             if (isOverdue) {
                 val overdueDays = getOverdueDays(today, deadlineDay)
-                val wasPosted = NotificationHelper.showOverdueTaskNotification(
+                NotificationHelper.showOverdueTaskNotification(
                     applicationContext,
                     task.id.toString(),
                     task.deadline!!.time,
                     "⚠️ ${task.title}",
                     buildOverdueTaskDetail(task, overdueDays)
                 )
-
-                if (wasPosted) {
-                    AppDebugLog.d(
-                        "NOTIFICATION",
-                        "overdue notification taskId=${task.id} days=$overdueDays posted=true"
-                    )
-                } else {
-                    AppDebugLog.d(
-                        "NOTIFICATION",
-                        "overdue notification taskId=${task.id} days=$overdueDays posted=false reason=alreadyShownOrUnavailable"
-                    )
-                }
                 return@forEach
             }
 
@@ -143,10 +112,6 @@ class DailyReminderWorker(
                 task.id.toString(),
                 "📝 ${task.title}",
                 buildUpcomingTaskDetail(task)
-            )
-            AppDebugLog.d(
-                "NOTIFICATION",
-                "deadline notification taskId=${task.id} status=${getDeadlineText(Calendar.getInstance(), task.deadline!!)}"
             )
         }
     }
@@ -168,14 +133,14 @@ class DailyReminderWorker(
     private suspend fun checkTodaySchedules(database: MyTaskDatabase) {
         val today = Calendar.getInstance().get(Calendar.DAY_OF_WEEK)
         val schedules = database.scheduleDao().getSchedulesByDay(today).first()
-        AppDebugLog.d("NOTIFICATION", "today schedule evaluation day=$today count=${schedules.size}")
         if (schedules.isEmpty()) return
 
         val courses = database.courseDao().getAllCourses().first()
-        schedules.sortedBy { it.startTime }.forEach { schedule ->
+        schedules.sortedBy { it.startMinutes }.forEach { schedule ->
             val course = courses.find { it.id == schedule.courseId }
             val message = buildString {
-                append("${schedule.startTime} - ${schedule.endTime}\n${course?.name ?: "Mata Kuliah"}")
+                append("${schedule.startMinutes.toDisplayTime()} - ${schedule.endMinutes.toDisplayTime()}\n")
+                append(course?.name ?: "Mata Kuliah")
                 if (schedule.room.isNotBlank()) append("\nRuangan: ${schedule.room}")
                 append("\n\nTap untuk konfirmasi.")
             }
@@ -185,7 +150,6 @@ class DailyReminderWorker(
                 "🕒 Jadwal Kuliah",
                 message
             )
-            AppDebugLog.d("NOTIFICATION", "schedule notification shown scheduleId=${schedule.id} courseId=${schedule.courseId}")
         }
     }
 
