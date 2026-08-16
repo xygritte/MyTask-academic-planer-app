@@ -7,6 +7,7 @@ import android.content.Intent
 import androidx.work.ExistingWorkPolicy
 import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.WorkManager
+import com.mytask.debug.AppDebugLog
 import java.util.Calendar
 
 object ReminderScheduler {
@@ -19,6 +20,7 @@ object ReminderScheduler {
     fun syncToday(
         context: Context
     ) {
+        AppDebugLog.d("NOTIFICATION", "syncToday enqueue worker")
 
         val request =
             OneTimeWorkRequestBuilder<DailyReminderWorker>()
@@ -36,7 +38,6 @@ object ReminderScheduler {
     fun scheduleNextMidnight(
         context: Context
     ) {
-
         val alarmManager =
             context.getSystemService(
                 Context.ALARM_SERVICE
@@ -59,11 +60,17 @@ object ReminderScheduler {
             nextMidnight.timeInMillis,
             pendingIntent
         )
+
+        AppDebugLog.d(
+            "NOTIFICATION",
+            "next midnight scheduled=${nextMidnight.timeInMillis}"
+        )
     }
 
     fun initialize(
         context: Context
     ) {
+        AppDebugLog.d("NOTIFICATION", "initialize reminder scheduler")
         syncToday(context)
         scheduleNextMidnight(context)
     }
@@ -71,6 +78,8 @@ object ReminderScheduler {
     fun cancel(
         context: Context
     ) {
+        AppDebugLog.d("NOTIFICATION", "cancel reminder scheduler")
+
         val alarmManager =
             context.getSystemService(
                 Context.ALARM_SERVICE
