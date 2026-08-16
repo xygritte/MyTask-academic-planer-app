@@ -2,6 +2,7 @@ package com.mytask.data.repository
 
 import android.content.Context
 import androidx.datastore.preferences.core.Preferences
+import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
@@ -34,11 +35,13 @@ class UserProfileRepository @Inject constructor(
 
         private val PROGRAM_KEY =
             stringPreferencesKey("student_program")
+
+        private val RESTORE_PENDING_KEY =
+            booleanPreferencesKey("restore_cloud_data_pending")
     }
 
     val profile: Flow<UserProfile?> =
         context.userProfileDataStore.data.map { preferences: Preferences ->
-
             val name =
                 preferences[NAME_KEY]
                     ?.trim()
@@ -49,10 +52,7 @@ class UserProfileRepository @Inject constructor(
                     ?.trim()
                     .orEmpty()
 
-            if (
-                name.isBlank() ||
-                program.isBlank()
-            ) {
+            if (name.isBlank() || program.isBlank()) {
                 null
             } else {
                 UserProfile(
@@ -67,6 +67,11 @@ class UserProfileRepository @Inject constructor(
             preferences[UID_KEY]
                 ?.trim()
                 ?.takeIf { it.isNotBlank() }
+        }
+
+    val restorePending: Flow<Boolean> =
+        context.userProfileDataStore.data.map { preferences ->
+            preferences[RESTORE_PENDING_KEY] ?: false
         }
 
     suspend fun saveProfile(
@@ -92,11 +97,24 @@ class UserProfileRepository @Inject constructor(
         )
     }
 
+    suspend fun markCloudRestorePending() {
+        context.userProfileDataStore.edit { preferences ->
+            preferences[RESTORE_PENDING_KEY] = true
+        }
+    }
+
+    suspend fun clearCloudRestorePending() {
+        context.userProfileDataStore.edit { preferences ->
+            preferences[RESTORE_PENDING_KEY] = false
+        }
+    }
+
     suspend fun clearProfile() {
         context.userProfileDataStore.edit { preferences ->
             preferences.remove(UID_KEY)
             preferences.remove(NAME_KEY)
             preferences.remove(PROGRAM_KEY)
+            preferences.remove(RESTORE_PENDING_KEY)
         }
     }
 }
