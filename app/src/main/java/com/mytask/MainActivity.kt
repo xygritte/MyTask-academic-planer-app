@@ -53,6 +53,8 @@ import com.mytask.ui.course.CourseViewModel
 import com.mytask.ui.dashboard.DashboardScreen
 import com.mytask.ui.loading.LoadingScreen
 import com.mytask.ui.login.LoginScreen
+import com.mytask.ui.login.OfflineLoginScreen
+import com.mytask.ui.login.rememberNetworkAvailable
 import com.mytask.ui.profile.ProfileScreen
 import com.mytask.ui.schedule.ScheduleScreen
 import com.mytask.ui.task.TaskListScreen
@@ -116,6 +118,9 @@ private fun MyTaskApp(
     val currentFirebaseUser = firebaseUser
     val currentLocalProfile = localProfile
 
+    var networkRefreshKey by remember { mutableStateOf(0) }
+    val isOnline = rememberNetworkAvailable(context, networkRefreshKey)
+
     var sessionProfile by remember { mutableStateOf<UserProfile?>(null) }
     var sessionUid by remember { mutableStateOf<String?>(null) }
     var restorePendingState by remember { mutableStateOf(false) }
@@ -150,15 +155,25 @@ private fun MyTaskApp(
         }
     }
 
-    // One restore attempt per authenticated UID. Do not key this effect by restorePending,
-    // because changing restorePending from true -> false must not start a second restore.
-    LaunchedEffect(currentFirebaseUser?.uid) {
+    // Never keep an authenticated workspace while offline. Offline entry is Guest-only.
+    LaunchedEffect(currentFirebaseUser?.uid, isOnline) {
         val user = currentFirebaseUser
 
         if (user == null) {
             accountLoading = false
             restorePendingState = false
             if (sessionUid == "guest") syncReady = true
+            return@LaunchedEffect
+        }
+
+        if (!isOnline) {
+            accountLoading = false
+            restorePendingState = false
+            syncReady = false
+            sessionProfile = null
+            sessionUid = null
+            shouldShowTemplatePrompt = false
+            runCatching { authRepository.clearLocalSession() }
             return@LaunchedEffect
         }
 
@@ -187,29 +202,42 @@ private fun MyTaskApp(
         restorePendingState = shouldRestoreFromCloud
 
         if (shouldRestoreFromCloud) {
-            val cloudDataExists = runCatching {
+            val restoreResult = runCatching {
                 cloudDataSyncRepository.syncOnLogin(user.uid)
-            }.onSuccess {
+            }
+
+            restoreResult.onSuccess { cloudDataExists ->
                 userProfileRepository.clearCloudRestorePending()
                 restorePendingState = false
-            }.onFailure { error ->
-                templateError = error.message ?: "Data online belum dapat dimuat."
-            }.getOrDefault(false)
 
-            if (!cloudDataExists) {
-                val promptShown = runCatching {
-                    templatePreferenceRepository.promptShown(user.uid).first()
-                }.getOrDefault(false)
-                shouldShowTemplatePrompt = !promptShown
-            } else {
+                if (!cloudDataExists) {
+                    val promptShown = runCatching {
+                        templatePreferenceRepository.promptShown(user.uid).first()
+                    }.getOrDefault(false)
+                    shouldShowTemplatePrompt = !promptShown
+                } else {
+                    shouldShowTemplatePrompt = false
+                }
+
+                syncReady = true
+                accountLoading = false
+            }.onFailure { error ->
+                templateError = error.message ?: "Data akun tidak dapat dimuat dari online."
+                sessionProfile = null
+                sessionUid = null
+                restorePendingState = false
+                syncReady = false
+                accountLoading = false
                 shouldShowTemplatePrompt = false
+                // A Firebase-authenticated user without a successfully restored workspace
+                // is treated as a failed login, never as an empty account.
+                runCatching { authRepository.clearLocalSession() }
             }
         } else {
             shouldShowTemplatePrompt = false
+            syncReady = true
+            accountLoading = false
         }
-
-        syncReady = true
-        accountLoading = false
     }
 
     if (minimumLoading) {
@@ -295,7 +323,7 @@ private fun MyTaskApp(
         return
     }
 
-    if (currentLocalProfile != null) {
+    if (currentLocalProfile != null && sessionUid == "guest") {
         MyTaskMainContent(
             profile = currentLocalProfile,
             canSaveOnline = false,
@@ -314,7 +342,14 @@ private fun MyTaskApp(
         return
     }
 
-    LoginScreen(authRepository = authRepository)
+    if (isOnline) {
+        LoginScreen(authRepository = authRepository)
+    } else {
+        OfflineLoginScreen(
+            authRepository = authRepository,
+            onRefresh = { networkRefreshKey += 1 }
+        )
+    }
 }
 
 @Composable
