@@ -37,6 +37,9 @@ class UserProfileRepository @Inject constructor(
         private val PROGRAM_KEY =
             stringPreferencesKey("student_program")
 
+        private val PROFILE_PHOTO_URI_KEY =
+            stringPreferencesKey("profile_photo_uri")
+
         private val RESTORE_PENDING_KEY =
             booleanPreferencesKey("restore_cloud_data_pending")
     }
@@ -64,6 +67,13 @@ class UserProfileRepository @Inject constructor(
     val uid: Flow<String?> =
         context.userProfileDataStore.data.map { preferences ->
             preferences[UID_KEY]
+                ?.trim()
+                ?.takeIf { it.isNotBlank() }
+        }
+
+    val profilePhotoUri: Flow<String?> =
+        context.userProfileDataStore.data.map { preferences ->
+            preferences[PROFILE_PHOTO_URI_KEY]
                 ?.trim()
                 ?.takeIf { it.isNotBlank() }
         }
@@ -125,6 +135,17 @@ class UserProfileRepository @Inject constructor(
         AuthDebugLog.d("PROFILE_STORE guest profile saved")
     }
 
+    suspend fun saveProfilePhotoUri(uri: String?) {
+        context.userProfileDataStore.edit { preferences ->
+            if (uri.isNullOrBlank()) {
+                preferences.remove(PROFILE_PHOTO_URI_KEY)
+            } else {
+                preferences[PROFILE_PHOTO_URI_KEY] = uri
+            }
+        }
+        AuthDebugLog.d("PROFILE_STORE profile photo ${if (uri.isNullOrBlank()) "cleared" else "saved"}")
+    }
+
     suspend fun markCloudRestorePending() {
         context.userProfileDataStore.edit { preferences ->
             preferences[RESTORE_PENDING_KEY] = true
@@ -144,6 +165,7 @@ class UserProfileRepository @Inject constructor(
             preferences.remove(UID_KEY)
             preferences.remove(NAME_KEY)
             preferences.remove(PROGRAM_KEY)
+            preferences.remove(PROFILE_PHOTO_URI_KEY)
             preferences.remove(RESTORE_PENDING_KEY)
         }
         AuthDebugLog.d("PROFILE_STORE clearProfile")
