@@ -2,20 +2,32 @@
 
 package com.mytask.ui.course
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.MenuBook
 import androidx.compose.material3.Button
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -24,8 +36,8 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 
@@ -35,299 +47,128 @@ fun AddEditCourseScreen(
     onBack: () -> Unit = {},
     viewModel: CourseViewModel = hiltViewModel()
 ) {
+    val courseFlow = remember(courseId) { courseId?.let(viewModel::getCourseById) }
+    val course by if (courseFlow != null) courseFlow.collectAsState() else remember { mutableStateOf(null) }
 
-    /*
-     * Ambil data mata kuliah berdasarkan ID
-     */
-    val courseFlow = remember(courseId) {
+    var name by remember(courseId) { mutableStateOf("") }
+    var code by remember(courseId) { mutableStateOf("") }
+    var lecturer by remember(courseId) { mutableStateOf("") }
+    var room by remember(courseId) { mutableStateOf("") }
+    var initialized by remember(courseId) { mutableStateOf(false) }
 
-        courseId?.let { id ->
-            viewModel.getCourseById(id)
-        }
-    }
-
-    /*
-     * Ambil hasil dari Flow
-     */
-    val course by if (courseFlow != null) {
-
-        courseFlow.collectAsState()
-
-    } else {
-
-        remember {
-            mutableStateOf(null)
-        }
-    }
-
-    /*
-     * State form
-     */
-    var name by remember {
-        mutableStateOf("")
-    }
-
-    var code by remember {
-        mutableStateOf("")
-    }
-
-    var lecturer by remember {
-        mutableStateOf("")
-    }
-
-    var room by remember {
-        mutableStateOf("")
-    }
-
-    /*
-     * Mencegah data di-reset terus menerus
-     */
-    var initialized by remember(courseId) {
-        mutableStateOf(false)
-    }
-
-    /*
-     * Isi form otomatis ketika data dari Room sudah tersedia
-     */
     LaunchedEffect(course) {
-
         if (course != null && !initialized) {
-
             name = course!!.name
-
             code = course!!.code
-
             lecturer = course!!.lecturer
-
             room = course!!.room
-
             initialized = true
         }
     }
 
     Scaffold(
-
         topBar = {
-
             TopAppBar(
-
-                title = {
-
-                    Text(
-
-                        text =
-                            if (courseId == null) {
-                                "Tambah Mata Kuliah"
-                            } else {
-                                "Edit Mata Kuliah"
-                            },
-
-                        fontWeight =
-                            FontWeight.Bold
-                    )
-                },
-
+                title = { Text(if (courseId == null) "Tambah Mata Kuliah" else "Edit Mata Kuliah") },
                 navigationIcon = {
-
-                    IconButton(
-                        onClick = onBack
-                    ) {
-
-                        Icon(
-
-                            imageVector =
-                                Icons.Default.ArrowBack,
-
-                            contentDescription =
-                                "Kembali"
-                        )
-                    }
+                    IconButton(onClick = onBack) { Icon(Icons.Default.ArrowBack, contentDescription = "Kembali") }
                 }
             )
         }
-
     ) { paddingValues ->
-
         Column(
-
-            modifier =
-                Modifier
-                    .fillMaxSize()
-                    .padding(paddingValues)
-                    .padding(16.dp),
-
-            verticalArrangement =
-                Arrangement.spacedBy(12.dp)
+            modifier = Modifier.fillMaxSize().padding(paddingValues).verticalScroll(rememberScrollState()).padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Surface(
+                    modifier = Modifier.padding(end = 12.dp),
+                    shape = MaterialTheme.shapes.medium,
+                    color = MaterialTheme.colorScheme.secondaryContainer
+                ) {
+                    Icon(Icons.Default.MenuBook, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(10.dp))
+                }
+                Column {
+                    Text(if (courseId == null) "Buat mata kuliah baru" else "Perbarui mata kuliah", style = MaterialTheme.typography.titleLarge)
+                    Text("Simpan identitas mata kuliah dan informasi pengajar", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
 
-            /*
-             * NAMA MATA KULIAH
-             */
+            Card(
+                shape = MaterialTheme.shapes.large,
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)),
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.2f))
+            ) {
+                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Text("Informasi Mata Kuliah", style = MaterialTheme.typography.titleMedium)
+                    OutlinedTextField(
+                        value = name,
+                        onValueChange = { name = it },
+                        modifier = Modifier.fillMaxWidth(),
+                        label = { Text("Nama Mata Kuliah") },
+                        singleLine = true
+                    )
+                    OutlinedTextField(
+                        value = code,
+                        onValueChange = { code = it },
+                        modifier = Modifier.fillMaxWidth(),
+                        label = { Text("Kode Mata Kuliah / SKS") },
+                        singleLine = true
+                    )
+                    OutlinedTextField(
+                        value = lecturer,
+                        onValueChange = { lecturer = it },
+                        modifier = Modifier.fillMaxWidth(),
+                        label = { Text("Dosen") },
+                        singleLine = true
+                    )
+                }
+            }
 
-            OutlinedTextField(
+            Card(
+                shape = MaterialTheme.shapes.large,
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)),
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.2f))
+            ) {
+                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Text("Lokasi", style = MaterialTheme.typography.titleMedium)
+                    OutlinedTextField(
+                        value = room,
+                        onValueChange = { room = it },
+                        modifier = Modifier.fillMaxWidth(),
+                        label = { Text("Ruangan") },
+                        singleLine = true
+                    )
+                    Text("Informasi ruangan digunakan pada daftar jadwal dan notifikasi kelas.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
 
-                value = name,
-
-                onValueChange = {
-                    name = it
-                },
-
-                modifier =
-                    Modifier.fillMaxWidth(),
-
-                label = {
-                    Text("Nama Mata Kuliah")
-                },
-
-                singleLine = true
-            )
-
-            /*
-             * KODE
-             */
-
-            OutlinedTextField(
-
-                value = code,
-
-                onValueChange = {
-                    code = it
-                },
-
-                modifier =
-                    Modifier.fillMaxWidth(),
-
-                label = {
-                    Text("Kode Mata Kuliah/jumlah SKS")
-                },
-
-                singleLine = true
-            )
-
-            /*
-             * DOSEN
-             */
-
-            OutlinedTextField(
-
-                value = lecturer,
-
-                onValueChange = {
-                    lecturer = it
-                },
-
-                modifier =
-                    Modifier.fillMaxWidth(),
-
-                label = {
-                    Text("Dosen")
-                },
-
-                singleLine = true
-            )
-
-            /*
-             * RUANGAN
-             */
-
-            OutlinedTextField(
-
-                value = room,
-
-                onValueChange = {
-                    room = it
-                },
-
-                modifier =
-                    Modifier.fillMaxWidth(),
-
-                label = {
-                    Text("Ruangan")
-                },
-
-                singleLine = true
-            )
-
-            /*
-             * SIMPAN / UPDATE
-             */
-
-            Button(
-
-                onClick = {
-
-                    if (name.isNotBlank()) {
-
-                        /*
-                         * MODE TAMBAH
-                         */
-
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                TextButton(onClick = onBack, modifier = Modifier.weight(1f)) { Text("Batal") }
+                Button(
+                    onClick = {
+                        if (name.isBlank()) return@Button
                         if (course == null) {
-
-                            viewModel.addCourse(
-
-                                name =
-                                    name,
-
-                                code =
-                                    code,
-
-                                lecturer =
-                                    lecturer,
-
-                                room =
-                                    room,
-
-                                onSaved =
-                                    onBack
-                            )
-
+                            viewModel.addCourse(name.trim(), code.trim(), lecturer.trim(), room.trim(), onBack)
                         } else {
-
-                            /*
-                             * MODE EDIT
-                             */
-
                             viewModel.updateCourse(
-
                                 course!!.copy(
-
-                                    name =
-                                        name,
-
-                                    code =
-                                        code,
-
-                                    lecturer =
-                                        lecturer,
-
-                                    room =
-                                        room
+                                    name = name.trim(),
+                                    code = code.trim(),
+                                    lecturer = lecturer.trim(),
+                                    room = room.trim()
                                 ),
-
-                                onSaved =
-                                    onBack
+                                onSaved = onBack
                             )
                         }
-                    }
-                },
-
-                modifier =
-                    Modifier.fillMaxWidth(),
-
-                enabled =
-                    name.isNotBlank()
-            ) {
-
-                Text(
-
-                    if (courseId == null) {
-                        "Simpan Mata Kuliah"
-                    } else {
-                        "Update Mata Kuliah"
-                    }
-                )
+                    },
+                    modifier = Modifier.weight(1f),
+                    enabled = name.isNotBlank()
+                ) {
+                    Text(if (courseId == null) "Simpan Mata Kuliah" else "Update Mata Kuliah")
+                }
             }
+            Spacer(Modifier.height(24.dp))
         }
     }
 }
