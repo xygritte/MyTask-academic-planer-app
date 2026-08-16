@@ -10,6 +10,9 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import java.util.Calendar
+import java.util.Date
+import java.util.concurrent.TimeUnit
 
 class DeadlineReceiver : BroadcastReceiver() {
 
@@ -28,14 +31,16 @@ class DeadlineReceiver : BroadcastReceiver() {
             try {
                 val task = database.taskDao().getTaskById(taskId).first()
                 if (task != null && !task.isCompleted && task.deadline != null) {
-                    val overdueDays = java.util.concurrent.TimeUnit.MILLISECONDS.toDays(
-                        (startOfToday().timeInMillis - startOfDay(task.deadline!!).timeInMillis)
+                    val deadline = task.deadline!!
+                    val overdueDays = TimeUnit.MILLISECONDS.toDays(
+                        startOfToday().timeInMillis - startOfDay(deadline).timeInMillis
                     ).coerceAtLeast(0L)
 
-                    if (task.deadline!!.time <= System.currentTimeMillis()) {
-                        NotificationHelper.showOverdueTaskNotification(
+                    if (deadline.time <= System.currentTimeMillis()) {
+                        val posted = NotificationHelper.showOverdueTaskNotification(
                             context.applicationContext,
                             task.id.toString(),
+                            deadline.time,
                             "⚠️ ${task.title}",
                             buildString {
                                 append("⚠️ TERLAMBAT")
@@ -59,6 +64,18 @@ class DeadlineReceiver : BroadcastReceiver() {
                                 append("\n\nTap untuk membuka tugas.")
                             }
                         )
+
+                        if (posted) {
+                            com.mytask.debug.AppDebugLog.d(
+                                "NOTIFICATION",
+                                "deadline receiver posted overdue taskId=$taskId"
+                            )
+                        } else {
+                            com.mytask.debug.AppDebugLog.d(
+                                "NOTIFICATION",
+                                "deadline receiver suppressed overdue taskId=$taskId alreadyShown=true"
+                            )
+                        }
                     }
                 }
             } finally {
@@ -68,10 +85,9 @@ class DeadlineReceiver : BroadcastReceiver() {
         }
     }
 
-    private fun startOfToday(): java.util.Calendar = CalendarUtils.startOfToday()
+    private fun startOfToday(): Calendar = CalendarUtils.startOfToday()
 
-    private fun startOfDay(date: java.util.Date): java.util.Calendar =
-        CalendarUtils.startOfDay(date)
+    private fun startOfDay(date: Date): Calendar = CalendarUtils.startOfDay(date)
 
     companion object {
         const val EXTRA_TASK_ID = "task_id"
@@ -79,20 +95,20 @@ class DeadlineReceiver : BroadcastReceiver() {
 }
 
 private object CalendarUtils {
-    fun startOfToday(): java.util.Calendar =
-        java.util.Calendar.getInstance().apply {
-            set(java.util.Calendar.HOUR_OF_DAY, 0)
-            set(java.util.Calendar.MINUTE, 0)
-            set(java.util.Calendar.SECOND, 0)
-            set(java.util.Calendar.MILLISECOND, 0)
+    fun startOfToday(): Calendar =
+        Calendar.getInstance().apply {
+            set(Calendar.HOUR_OF_DAY, 0)
+            set(Calendar.MINUTE, 0)
+            set(Calendar.SECOND, 0)
+            set(Calendar.MILLISECOND, 0)
         }
 
-    fun startOfDay(date: java.util.Date): java.util.Calendar =
-        java.util.Calendar.getInstance().apply {
+    fun startOfDay(date: Date): Calendar =
+        Calendar.getInstance().apply {
             time = date
-            set(java.util.Calendar.HOUR_OF_DAY, 0)
-            set(java.util.Calendar.MINUTE, 0)
-            set(java.util.Calendar.SECOND, 0)
-            set(java.util.Calendar.MILLISECOND, 0)
+            set(Calendar.HOUR_OF_DAY, 0)
+            set(Calendar.MINUTE, 0)
+            set(Calendar.SECOND, 0)
+            set(Calendar.MILLISECOND, 0)
         }
 }
