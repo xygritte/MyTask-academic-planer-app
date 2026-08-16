@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.room.Room
 import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
+import com.mytask.debug.AppDebugLog
 import com.mytask.data.local.MyTaskDatabase
 import com.mytask.data.local.entity.TaskEntity
 import com.mytask.data.repository.SettingsRepository
@@ -21,6 +22,7 @@ class DailyReminderWorker(
 ) {
 
     override suspend fun doWork(): Result {
+        AppDebugLog.d("NOTIFICATION", "worker start id=$id")
 
         val database =
             Room.databaseBuilder(
@@ -30,842 +32,304 @@ class DailyReminderWorker(
             ).build()
 
         val settingsRepository =
-            SettingsRepository(
-                applicationContext
-            )
+            SettingsRepository(applicationContext)
 
         return try {
+            NotificationHelper.createChannels(applicationContext)
 
-            NotificationHelper.createChannels(
-                applicationContext
+            val tasks = database.taskDao().getAllTasks().first()
+            val reminderDays = settingsRepository.taskReminderDays.first()
+            val activeTaskNotificationEnabled = settingsRepository.activeTaskNotification.first()
+
+            AppDebugLog.d(
+                "NOTIFICATION",
+                "worker data tasks=${tasks.size} reminderDays=$reminderDays activeTasksNotification=$activeTaskNotificationEnabled"
             )
 
-            /*
-             * ==========================================
-             * DATA
-             * ==========================================
-             */
-
-            val tasks =
-                database
-                    .taskDao()
-                    .getAllTasks()
-                    .first()
-
-            /*
-             * ==========================================
-             * SETTINGS
-             * ==========================================
-             */
-
-            val reminderDays =
-                settingsRepository
-                    .taskReminderDays
-                    .first()
-
-            val activeTaskNotificationEnabled =
-                settingsRepository
-                    .activeTaskNotification
-                    .first()
-
-            /*
-             * ==========================================
-             * 1. TUGAS AKTIF
-             * ==========================================
-             */
-
-            if (
-                activeTaskNotificationEnabled
-            ) {
-
-                checkActiveTasks(
-                    tasks
-                )
-
+            if (activeTaskNotificationEnabled) {
+                checkActiveTasks(tasks)
             } else {
-
-                NotificationHelper
-                    .cancelActiveTasksNotification(
-                        applicationContext
-                    )
+                NotificationHelper.cancelActiveTasksNotification(applicationContext)
+                AppDebugLog.d("NOTIFICATION", "active task notification disabled")
             }
 
-            /*
-             * ==========================================
-             * 2. DEADLINE TASK
-             * ==========================================
-             */
+            checkDeadlineTasks(tasks = tasks, reminderDays = reminderDays)
+            checkTodaySchedules(database)
+            ReminderScheduler.scheduleNextMidnight(applicationContext)
 
-            checkDeadlineTasks(
-                tasks = tasks,
-                reminderDays = reminderDays
-            )
-
-            /*
-             * ==========================================
-             * 3. JADWAL KULIAH
-             * ==========================================
-             */
-
-            checkTodaySchedules(
-                database
-            )
-
-            /*
-             * ==========================================
-             * MIDNIGHT BERIKUTNYA
-             * ==========================================
-             */
-
-            ReminderScheduler
-                .scheduleNextMidnight(
-                    applicationContext
-                )
-
+            AppDebugLog.d("NOTIFICATION", "worker success")
             Result.success()
-
         } catch (e: Exception) {
-
-            e.printStackTrace()
-
+            AppDebugLog.e("NOTIFICATION", "worker failed", e)
             Result.failure()
-
         } finally {
-
             database.close()
+            AppDebugLog.d("NOTIFICATION", "worker database closed")
         }
     }
 
+    private fun checkActiveTasks(tasks: List<TaskEntity>) {
+        val activeTasks = tasks.filter { !it.isCompleted }
 
-    // =================================================
-    // TUGAS AKTIF
-    // =================================================
+        AppDebugLog.d(
+            "NOTIFICATION",
+            "active task evaluation count=${activeTasks.size}"
+        )
 
-    private fun checkActiveTasks(
-        tasks: List<TaskEntity>
-    ) {
-
-        val activeTasks =
-            tasks.filter {
-                !it.isCompleted
-            }
-
-        if (
-            activeTasks.isEmpty()
-        ) {
-
-            NotificationHelper
-                .cancelActiveTasksNotification(
-                    applicationContext
-                )
-
+        if (activeTasks.isEmpty()) {
+            NotificationHelper.cancelActiveTasksNotification(applicationContext)
             return
         }
 
-        val today =
-            Calendar.getInstance()
+        val today = Calendar.getInstance()
+        val visibleTasks = activeTasks
+            .sortedBy { it.deadline ?: Date(Long.MAX_VALUE) }
+            .take(4)
 
-        val visibleTasks =
-            activeTasks
-                .sortedBy {
-                    it.deadline
-                        ?: Date(Long.MAX_VALUE)
+        val message = buildString {
+            visibleTasks.forEachIndexed { index, task ->
+                append("• ")
+                append(task.title)
+                task.deadline?.let { deadline ->
+                    append(" — ")
+                    append(getDeadlineText(today, deadline))
                 }
-                .take(4)
-
-        val message =
-            buildString {
-
-                visibleTasks
-                    .forEachIndexed {
-                            index,
-                            task ->
-
-                        append("• ")
-                        append(task.title)
-
-                        task.deadline?.let { deadline ->
-
-                            append(
-                                " — "
-                            )
-
-                            append(
-                                getDeadlineText(
-                                    today,
-                                    deadline
-                                )
-                            )
-                        }
-
-                        if (
-                            index <
-                            visibleTasks.lastIndex
-                        ) {
-
-                            append("\n")
-                        }
-                    }
-
-                if (
-                    activeTasks.size >
-                    visibleTasks.size
-                ) {
-
-                    append(
-                        "\n+ ${
-                            activeTasks.size -
-                                    visibleTasks.size
-                        } tugas lainnya"
-                    )
-                }
+                if (index < visibleTasks.lastIndex) append("\n")
             }
 
-        NotificationHelper
-            .showActiveTasksNotification(
-                applicationContext,
-                message
-            )
+            if (activeTasks.size > visibleTasks.size) {
+                append("\n+ ${activeTasks.size - visibleTasks.size} tugas lainnya")
+            }
+        }
+
+        NotificationHelper.showActiveTasksNotification(
+            applicationContext,
+            message
+        )
+
+        AppDebugLog.d(
+            "NOTIFICATION",
+            "active task notification shown visible=${visibleTasks.size} total=${activeTasks.size}"
+        )
     }
-
-
-    // =================================================
-    // DEADLINE
-    // =================================================
-    //
-    // Mulai H-X sesuai setting.
-    //
-    // Setelah deadline:
-    // tetap permanen sampai task selesai.
-    //
-    // Overdue memakai tampilan berbeda.
-    // =================================================
 
     private fun checkDeadlineTasks(
         tasks: List<TaskEntity>,
         reminderDays: Int
     ) {
+        val today = Calendar.getInstance().apply {
+            set(Calendar.HOUR_OF_DAY, 0)
+            set(Calendar.MINUTE, 0)
+            set(Calendar.SECOND, 0)
+            set(Calendar.MILLISECOND, 0)
+        }
 
-        val today =
-            Calendar.getInstance().apply {
-
-                set(
-                    Calendar.HOUR_OF_DAY,
-                    0
-                )
-
-                set(
-                    Calendar.MINUTE,
-                    0
-                )
-
-                set(
-                    Calendar.SECOND,
-                    0
-                )
-
-                set(
-                    Calendar.MILLISECOND,
-                    0
-                )
-            }
-
-        val reminderStart =
-            Calendar.getInstance().apply {
-
-                time =
-                    today.time
-
-                add(
-                    Calendar.DAY_OF_YEAR,
-                    reminderDays
-                )
-            }
+        val reminderStart = Calendar.getInstance().apply {
+            time = today.time
+            add(Calendar.DAY_OF_YEAR, reminderDays)
+        }
 
         tasks.forEach { task ->
-
-            /*
-             * ==========================================
-             * SELESAI
-             * ==========================================
-             */
-
-            if (
-                task.isCompleted
-            ) {
-
-                NotificationHelper
-                    .cancelTaskNotification(
-                        applicationContext,
-                        task.id.toString()
-                    )
-
+            if (task.isCompleted) {
+                NotificationHelper.cancelTaskNotification(
+                    applicationContext,
+                    task.id.toString()
+                )
                 return@forEach
             }
 
-            /*
-             * ==========================================
-             * TANPA DEADLINE
-             * ==========================================
-             */
+            val deadline = task.deadline ?: run {
+                NotificationHelper.cancelTaskNotification(
+                    applicationContext,
+                    task.id.toString()
+                )
+                return@forEach
+            }
 
-            val deadline =
-                task.deadline
+            val deadlineDay = Calendar.getInstance().apply {
+                time = deadline
+                set(Calendar.HOUR_OF_DAY, 0)
+                set(Calendar.MINUTE, 0)
+                set(Calendar.SECOND, 0)
+                set(Calendar.MILLISECOND, 0)
+            }
 
-                    ?: run {
-
-                        NotificationHelper
-                            .cancelTaskNotification(
-                                applicationContext,
-                                task.id.toString()
-                            )
-
-                        return@forEach
-                    }
-
-            /*
-             * ==========================================
-             * NORMALISASI DEADLINE
-             * ==========================================
-             */
-
-            val deadlineDay =
-                Calendar.getInstance().apply {
-
-                    time =
-                        deadline
-
-                    set(
-                        Calendar.HOUR_OF_DAY,
-                        0
-                    )
-
-                    set(
-                        Calendar.MINUTE,
-                        0
-                    )
-
-                    set(
-                        Calendar.SECOND,
-                        0
-                    )
-
-                    set(
-                        Calendar.MILLISECOND,
-                        0
-                    )
-                }
-
-            /*
-             * ==========================================
-             * SUDAH TERLAMBAT?
-             * ==========================================
-             */
-
-            val isOverdue =
-                deadlineDay.timeInMillis <
-                        today.timeInMillis
-
-            /*
-             * ==========================================
-             * SUDAH MASUK WINDOW PENGINGAT?
-             * ==========================================
-             */
-
-            val shouldShow =
-                deadlineDay.timeInMillis <=
-                        reminderStart.timeInMillis
+            val isOverdue = deadlineDay.timeInMillis < today.timeInMillis
+            val shouldShow = deadlineDay.timeInMillis <= reminderStart.timeInMillis
 
             if (!shouldShow) {
-
-                /*
-                 * Deadline masih terlalu jauh.
-                 */
-                NotificationHelper
-                    .cancelTaskNotification(
-                        applicationContext,
-                        task.id.toString()
-                    )
-
-                return@forEach
-            }
-
-            /*
-             * ==========================================
-             * OVERDUE
-             * ==========================================
-             */
-
-            if (
-                isOverdue
-            ) {
-
-                val overdueDays =
-                    getOverdueDays(
-                        today,
-                        deadlineDay
-                    )
-
-                val detail =
-                    buildOverdueTaskDetail(
-                        task = task,
-                        overdueDays = overdueDays
-                    )
-
-                NotificationHelper
-                    .showOverdueTaskNotification(
-
-                        applicationContext,
-
-                        task.id.toString(),
-
-                        "⚠️ ${task.title}",
-
-                        detail
-                    )
-
-                return@forEach
-            }
-
-            /*
-             * ==========================================
-             * BELUM OVERDUE
-             * ==========================================
-             */
-
-            val detail =
-                buildUpcomingTaskDetail(
-                    task
-                )
-
-            NotificationHelper
-                .showTaskNotification(
-
+                NotificationHelper.cancelTaskNotification(
                     applicationContext,
+                    task.id.toString()
+                )
+                return@forEach
+            }
 
+            if (isOverdue) {
+                val overdueDays = getOverdueDays(today, deadlineDay)
+                val detail = buildOverdueTaskDetail(task, overdueDays)
+
+                NotificationHelper.showOverdueTaskNotification(
+                    applicationContext,
                     task.id.toString(),
-
-                    "📝 ${task.title}",
-
+                    "⚠️ ${task.title}",
                     detail
                 )
+
+                AppDebugLog.d(
+                    "NOTIFICATION",
+                    "overdue notification taskId=${task.id} days=$overdueDays"
+                )
+                return@forEach
+            }
+
+            val detail = buildUpcomingTaskDetail(task)
+            NotificationHelper.showTaskNotification(
+                applicationContext,
+                task.id.toString(),
+                "📝 ${task.title}",
+                detail
+            )
+
+            AppDebugLog.d(
+                "NOTIFICATION",
+                "deadline notification taskId=${task.id} status=${getDeadlineText(Calendar.getInstance(), deadline)}"
+            )
         }
     }
 
-
-    // =================================================
-    // DETAIL TUGAS YANG BELUM TERLAMBAT
-    // =================================================
-
-    private fun buildUpcomingTaskDetail(
-        task: TaskEntity
-    ): String {
-
-        val deadline =
-            task.deadline
-                ?: return buildBasicTaskDetail(
-                    task
-                )
-
-        val status =
-            getDeadlineText(
-                Calendar.getInstance(),
-                deadline
-            )
+    private fun buildUpcomingTaskDetail(task: TaskEntity): String {
+        val deadline = task.deadline ?: return buildBasicTaskDetail(task)
+        val status = getDeadlineText(Calendar.getInstance(), deadline)
 
         return buildString {
-
-            task.description
-                .takeIf {
-                    it.isNotBlank()
-                }
-                ?.let {
-
-                    append(it)
-
-                    append(
-                        "\n\n"
-                    )
-                }
-
-            append(
-                "Deadline: "
-            )
-
-            append(
-                status
-            )
-
-            append(
-                "\n"
-            )
-
-            append(
-                "Prioritas: "
-            )
-
-            append(
-                getPriorityText(
-                    task.priority
-                )
-            )
-
-            append(
-                "\n\nTap untuk membuka tugas."
-            )
+            task.description.takeIf { it.isNotBlank() }?.let {
+                append(it)
+                append("\n\n")
+            }
+            append("Deadline: ")
+            append(status)
+            append("\n")
+            append("Prioritas: ")
+            append(getPriorityText(task.priority))
+            append("\n\nTap untuk membuka tugas.")
         }
     }
 
-
-    // =================================================
-    // DETAIL TUGAS TERLAMBAT
-    // =================================================
-
-    private fun buildOverdueTaskDetail(
-        task: TaskEntity,
-        overdueDays: Long
-    ): String {
-
+    private fun buildOverdueTaskDetail(task: TaskEntity, overdueDays: Long): String {
         return buildString {
+            append("⚠️ TERLAMBAT")
+            append("\n")
+            append("Sudah lewat ")
+            append(overdueDays)
+            append(" hari")
 
-            append(
-                "⚠️ TERLAMBAT"
-            )
+            task.description.takeIf { it.isNotBlank() }?.let {
+                append("\n\n")
+                append(it)
+            }
 
-            append(
-                "\n"
-            )
-
-            append(
-                "Sudah lewat "
-            )
-
-            append(
-                overdueDays
-            )
-
-            append(
-                if (
-                    overdueDays == 1L
-                ) {
-                    " hari"
-                } else {
-                    " hari"
-                }
-            )
-
-            task.description
-                .takeIf {
-                    it.isNotBlank()
-                }
-                ?.let {
-
-                    append(
-                        "\n\n"
-                    )
-
-                    append(it)
-                }
-
-            append(
-                "\n\nPrioritas: "
-            )
-
-            append(
-                getPriorityText(
-                    task.priority
-                )
-            )
-
-            append(
-                "\n\nTap untuk membuka tugas."
-            )
+            append("\n\nPrioritas: ")
+            append(getPriorityText(task.priority))
+            append("\n\nTap untuk membuka tugas.")
         }
     }
 
-
-    // =================================================
-    // TASK TANPA DETAIL
-    // =================================================
-
-    private fun buildBasicTaskDetail(
-        task: TaskEntity
-    ): String {
-
+    private fun buildBasicTaskDetail(task: TaskEntity): String {
         return buildString {
-
-            task.description
-                .takeIf {
-                    it.isNotBlank()
-                }
-                ?.let {
-
-                    append(it)
-
-                    append(
-                        "\n\n"
-                    )
-                }
-
-            append(
-                "Prioritas: "
-            )
-
-            append(
-                getPriorityText(
-                    task.priority
-                )
-            )
-
-            append(
-                "\n\nTap untuk membuka tugas."
-            )
+            task.description.takeIf { it.isNotBlank() }?.let {
+                append(it)
+                append("\n\n")
+            }
+            append("Prioritas: ")
+            append(getPriorityText(task.priority))
+            append("\n\nTap untuk membuka tugas.")
         }
     }
 
+    private suspend fun checkTodaySchedules(database: MyTaskDatabase) {
+        val today = Calendar.getInstance().get(Calendar.DAY_OF_WEEK)
+        val schedules = database.scheduleDao().getSchedulesByDay(today).first()
 
-    // =================================================
-    // JADWAL
-    // =================================================
+        AppDebugLog.d(
+            "NOTIFICATION",
+            "today schedule evaluation day=$today count=${schedules.size}"
+        )
 
-    private suspend fun checkTodaySchedules(
-        database: MyTaskDatabase
-    ) {
+        if (schedules.isEmpty()) return
 
-        val today =
-            Calendar
-                .getInstance()
-                .get(
-                    Calendar.DAY_OF_WEEK
-                )
-
-        val schedules =
-            database
-                .scheduleDao()
-                .getSchedulesByDay(
-                    today
-                )
-                .first()
-
-        if (
-            schedules.isEmpty()
-        ) {
-
-            return
-        }
-
-        val courses =
-            database
-                .courseDao()
-                .getAllCourses()
-                .first()
+        val courses = database.courseDao().getAllCourses().first()
 
         schedules
-            .sortedBy {
-                it.startTime
-            }
+            .sortedBy { it.startTime }
             .forEach { schedule ->
+                val course = courses.find { it.id == schedule.courseId }
+                val courseName = course?.name ?: "Mata Kuliah"
 
-                val course =
-                    courses.find {
-
-                        it.id ==
-                                schedule.courseId
+                val message = buildString {
+                    append("${schedule.startTime} - ${schedule.endTime}")
+                    append("\n$courseName")
+                    if (schedule.room.isNotBlank()) {
+                        append("\nRuangan: ${schedule.room}")
                     }
+                    append("\n\nTap untuk konfirmasi.")
+                }
 
-                val courseName =
-                    course?.name
-                        ?: "Mata Kuliah"
+                NotificationHelper.showScheduleNotification(
+                    applicationContext,
+                    schedule.id.toString(),
+                    "🕒 Jadwal Kuliah",
+                    message
+                )
 
-                val message =
-                    buildString {
-
-                        append(
-                            "${schedule.startTime} - " +
-                                    schedule.endTime
-                        )
-
-                        append(
-                            "\n$courseName"
-                        )
-
-                        if (
-                            schedule.room
-                                .isNotBlank()
-                        ) {
-
-                            append(
-                                "\nRuangan: " +
-                                        schedule.room
-                            )
-                        }
-
-                        append(
-                            "\n\nTap untuk konfirmasi."
-                        )
-                    }
-
-                NotificationHelper
-                    .showScheduleNotification(
-
-                        applicationContext,
-
-                        schedule.id.toString(),
-
-                        "🕒 Jadwal Kuliah",
-
-                        message
-                    )
+                AppDebugLog.d(
+                    "NOTIFICATION",
+                    "schedule notification shown scheduleId=${schedule.id} courseId=${schedule.courseId}"
+                )
             }
     }
 
+    private fun getDeadlineText(now: Calendar, deadline: Date): String {
+        val today = Calendar.getInstance().apply {
+            time = now.time
+            set(Calendar.HOUR_OF_DAY, 0)
+            set(Calendar.MINUTE, 0)
+            set(Calendar.SECOND, 0)
+            set(Calendar.MILLISECOND, 0)
+        }
 
-    // =================================================
-    // RELATIVE DEADLINE
-    // =================================================
+        val target = Calendar.getInstance().apply {
+            time = deadline
+            set(Calendar.HOUR_OF_DAY, 0)
+            set(Calendar.MINUTE, 0)
+            set(Calendar.SECOND, 0)
+            set(Calendar.MILLISECOND, 0)
+        }
 
-    private fun getDeadlineText(
-        now: Calendar,
-        deadline: Date
-    ): String {
-
-        val today =
-            Calendar
-                .getInstance()
-                .apply {
-
-                    time =
-                        now.time
-
-                    set(
-                        Calendar.HOUR_OF_DAY,
-                        0
-                    )
-
-                    set(
-                        Calendar.MINUTE,
-                        0
-                    )
-
-                    set(
-                        Calendar.SECOND,
-                        0
-                    )
-
-                    set(
-                        Calendar.MILLISECOND,
-                        0
-                    )
-                }
-
-        val target =
-            Calendar
-                .getInstance()
-                .apply {
-
-                    time =
-                        deadline
-
-                    set(
-                        Calendar.HOUR_OF_DAY,
-                        0
-                    )
-
-                    set(
-                        Calendar.MINUTE,
-                        0
-                    )
-
-                    set(
-                        Calendar.SECOND,
-                        0
-                    )
-
-                    set(
-                        Calendar.MILLISECOND,
-                        0
-                    )
-                }
-
-        val difference =
-            target.timeInMillis -
-                    today.timeInMillis
-
-        val days =
-            TimeUnit.MILLISECONDS
-                .toDays(
-                    difference
-                )
+        val difference = target.timeInMillis - today.timeInMillis
+        val days = TimeUnit.MILLISECONDS.toDays(difference)
 
         return when {
-
-            days < 0L -> {
-
-                "terlambat ${-days} hari"
-            }
-
-            days == 0L -> {
-
-                "hari ini"
-            }
-
-            days == 1L -> {
-
-                "1 hari lagi"
-            }
-
-            else -> {
-
-                "$days hari lagi"
-            }
+            days < 0L -> "terlambat ${-days} hari"
+            days == 0L -> "hari ini"
+            days == 1L -> "1 hari lagi"
+            else -> "$days hari lagi"
         }
     }
 
-
-    // =================================================
-    // JUMLAH HARI TERLAMBAT
-    // =================================================
-
-    private fun getOverdueDays(
-        today: Calendar,
-        deadline: Calendar
-    ): Long {
-
-        val difference =
-            today.timeInMillis -
-                    deadline.timeInMillis
-
+    private fun getOverdueDays(today: Calendar, deadline: Calendar): Long {
+        val difference = today.timeInMillis - deadline.timeInMillis
         return TimeUnit.MILLISECONDS
-            .toDays(
-                difference
-            )
-            .coerceAtLeast(
-                1L
-            )
+            .toDays(difference)
+            .coerceAtLeast(1L)
     }
 
-
-    // =================================================
-    // PRIORITY
-    // =================================================
-
-    private fun getPriorityText(
-        priority: Int
-    ): String {
-
+    private fun getPriorityText(priority: Int): String {
         return when (priority) {
-
-            1 ->
-                "Tinggi"
-
-            2 ->
-                "Sedang"
-
-            3 ->
-                "Rendah"
-
-            else ->
-                "Normal"
+            1 -> "Tinggi"
+            2 -> "Sedang"
+            3 -> "Rendah"
+            else -> "Normal"
         }
     }
 }
