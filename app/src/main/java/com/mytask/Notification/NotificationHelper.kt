@@ -17,211 +17,81 @@ import kotlin.math.abs
 
 object NotificationHelper {
 
-    private const val TASK_CHANNEL_ID =
-        "task_reminder"
+    private const val TASK_CHANNEL_ID = "task_reminder"
+    private const val SCHEDULE_CHANNEL_ID = "schedule_reminder"
+    private const val ACTIVE_TASKS_NOTIFICATION_ID = 4000
 
-    private const val SCHEDULE_CHANNEL_ID =
-        "schedule_reminder"
-
-    private const val ACTIVE_TASKS_NOTIFICATION_ID =
-        4000
-
-
-    // =================================================
-    // CHANNEL
-    // =================================================
-
-    fun createChannels(
-        context: Context
-    ) {
-
-        if (
-            Build.VERSION.SDK_INT <
-            Build.VERSION_CODES.O
-        ) {
-
-            return
-        }
+    fun createChannels(context: Context) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
 
         val manager =
-            context.getSystemService(
-                Context.NOTIFICATION_SERVICE
-            ) as NotificationManager
+            context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
 
-        val taskChannel =
-            NotificationChannel(
+        val taskChannel = NotificationChannel(
+            TASK_CHANNEL_ID,
+            "Pengingat Tugas",
+            NotificationManager.IMPORTANCE_HIGH
+        ).apply {
+            description = "Pengingat tugas"
+        }
 
-                TASK_CHANNEL_ID,
+        val scheduleChannel = NotificationChannel(
+            SCHEDULE_CHANNEL_ID,
+            "Jadwal Kuliah",
+            NotificationManager.IMPORTANCE_HIGH
+        ).apply {
+            description = "Jadwal kuliah hari ini"
+        }
 
-                "Pengingat Tugas",
-
-                NotificationManager
-                    .IMPORTANCE_HIGH
-
-            ).apply {
-
-                description =
-                    "Pengingat tugas"
-            }
-
-        val scheduleChannel =
-            NotificationChannel(
-
-                SCHEDULE_CHANNEL_ID,
-
-                "Jadwal Kuliah",
-
-                NotificationManager
-                    .IMPORTANCE_HIGH
-
-            ).apply {
-
-                description =
-                    "Jadwal kuliah hari ini"
-            }
-
-        manager.createNotificationChannel(
-            taskChannel
-        )
-
-        manager.createNotificationChannel(
-            scheduleChannel
-        )
+        manager.createNotificationChannel(taskChannel)
+        manager.createNotificationChannel(scheduleChannel)
     }
-
-
-    // =================================================
-    // TUGAS AKTIF
-    // SATU NOTIFIKASI
-    // BOLEH DI-SWIPE
-    // =================================================
 
     fun showActiveTasksNotification(
         context: Context,
         message: String
     ) {
+        if (!canNotify(context)) return
 
-        if (
-            !canNotify(context)
-        ) {
+        createChannels(context)
 
-            return
+        val intent = Intent(context, MainActivity::class.java).apply {
+            flags =
+                Intent.FLAG_ACTIVITY_NEW_TASK or
+                        Intent.FLAG_ACTIVITY_CLEAR_TOP
         }
 
-        createChannels(
-            context
+        val pendingIntent = PendingIntent.getActivity(
+            context,
+            ACTIVE_TASKS_NOTIFICATION_ID,
+            intent,
+            PendingIntent.FLAG_UPDATE_CURRENT or
+                    PendingIntent.FLAG_IMMUTABLE
         )
 
-        val intent =
-            Intent(
-
-                context,
-
-                MainActivity::class.java
-
-            ).apply {
-
-                flags =
-                    Intent.FLAG_ACTIVITY_NEW_TASK or
-                            Intent.FLAG_ACTIVITY_CLEAR_TOP
-            }
-
-        val pendingIntent =
-            PendingIntent.getActivity(
-
-                context,
-
-                ACTIVE_TASKS_NOTIFICATION_ID,
-
-                intent,
-
-                PendingIntent.FLAG_UPDATE_CURRENT or
-                        PendingIntent.FLAG_IMMUTABLE
-            )
-
-        val notification =
-            NotificationCompat
-                .Builder(
-
-                    context,
-
-                    TASK_CHANNEL_ID
-                )
-
-                .setSmallIcon(
-                    R.drawable.ic_notification
-                )
-
-                .setContentTitle(
-                    "Tugas Aktif"
-                )
-
-                .setContentText(
-                    message
-                )
-
-                .setStyle(
-
-                    NotificationCompat
-                        .BigTextStyle()
-                        .bigText(
-                            message
-                        )
-                )
-
-                .setPriority(
-                    NotificationCompat
-                        .PRIORITY_HIGH
-                )
-
-                .setContentIntent(
-                    pendingIntent
-                )
-
-                /*
-                 * BOLEH DI-SWIPE.
-                 */
-                .setAutoCancel(
-                    true
-                )
-
-                .setOngoing(
-                    false
-                )
-
-                .setOnlyAlertOnce(
-                    true
-                )
-
-                .build()
+        val notification = NotificationCompat
+            .Builder(context, TASK_CHANNEL_ID)
+            .setSmallIcon(R.drawable.ic_notification)
+            .setContentTitle("Tugas Aktif")
+            .setContentText(message)
+            .setStyle(NotificationCompat.BigTextStyle().bigText(message))
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setContentIntent(pendingIntent)
+            .setAutoCancel(true)
+            .setOngoing(false)
+            .setOnlyAlertOnce(true)
+            .build()
 
         NotificationManagerCompat
             .from(context)
-            .notify(
-
-                ACTIVE_TASKS_NOTIFICATION_ID,
-
-                notification
-            )
+            .notify(ACTIVE_TASKS_NOTIFICATION_ID, notification)
     }
 
-
-    fun cancelActiveTasksNotification(
-        context: Context
-    ) {
-
+    fun cancelActiveTasksNotification(context: Context) {
         NotificationManagerCompat
             .from(context)
-            .cancel(
-                ACTIVE_TASKS_NOTIFICATION_ID
-            )
+            .cancel(ACTIVE_TASKS_NOTIFICATION_ID)
     }
-
-
-    // =================================================
-    // TUGAS DEADLINE BIASA
-    // PERMANEN
-    // =================================================
 
     fun showTaskNotification(
         context: Context,
@@ -229,27 +99,14 @@ object NotificationHelper {
         title: String,
         message: String
     ) {
-
         showTaskNotificationInternal(
-
             context = context,
-
             taskId = taskId,
-
             title = title,
-
             message = message,
-
             overdue = false
         )
     }
-
-
-    // =================================================
-    // TUGAS TERLAMBAT
-    // PERMANEN
-    // TAMPILAN KHUSUS
-    // =================================================
 
     fun showOverdueTaskNotification(
         context: Context,
@@ -257,207 +114,73 @@ object NotificationHelper {
         title: String,
         message: String
     ) {
-
         showTaskNotificationInternal(
-
             context = context,
-
             taskId = taskId,
-
             title = title,
-
             message = message,
-
             overdue = true
         )
     }
 
-
-    // =================================================
-    // INTERNAL TASK NOTIFICATION
-    // =================================================
-
     private fun showTaskNotificationInternal(
-
         context: Context,
-
         taskId: String,
-
         title: String,
-
         message: String,
-
         overdue: Boolean
-
     ) {
+        if (!canNotify(context)) return
 
-        if (
-            !canNotify(context)
-        ) {
+        createChannels(context)
 
-            return
+        val notificationId = taskNotificationId(taskId)
+
+        val intent = Intent(context, MainActivity::class.java).apply {
+            flags =
+                Intent.FLAG_ACTIVITY_NEW_TASK or
+                        Intent.FLAG_ACTIVITY_CLEAR_TOP
         }
 
-        createChannels(
-            context
+        val pendingIntent = PendingIntent.getActivity(
+            context,
+            notificationId,
+            intent,
+            PendingIntent.FLAG_UPDATE_CURRENT or
+                    PendingIntent.FLAG_IMMUTABLE
         )
 
-        val notificationId =
-            taskNotificationId(
-                taskId
-            )
+        val builder = NotificationCompat
+            .Builder(context, TASK_CHANNEL_ID)
+            .setSmallIcon(R.drawable.ic_notification)
+            .setContentTitle(title)
+            .setContentText(message)
+            .setStyle(NotificationCompat.BigTextStyle().bigText(message))
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setContentIntent(pendingIntent)
+            .setAutoCancel(false)
+            .setOngoing(true)
+            .setOnlyAlertOnce(true)
 
-        val intent =
-            Intent(
-
-                context,
-
-                MainActivity::class.java
-
-            ).apply {
-
-                flags =
-                    Intent.FLAG_ACTIVITY_NEW_TASK or
-                            Intent.FLAG_ACTIVITY_CLEAR_TOP
-            }
-
-        val pendingIntent =
-            PendingIntent.getActivity(
-
-                context,
-
-                notificationId,
-
-                intent,
-
-                PendingIntent.FLAG_UPDATE_CURRENT or
-                        PendingIntent.FLAG_IMMUTABLE
-            )
-
-        val builder =
-            NotificationCompat
-                .Builder(
-
-                    context,
-
-                    TASK_CHANNEL_ID
-                )
-
-                .setSmallIcon(
-                    R.drawable.ic_notification
-                )
-
-                .setContentTitle(
-                    title
-                )
-
-                .setContentText(
-                    message
-                )
-
-                .setStyle(
-
-                    NotificationCompat
-                        .BigTextStyle()
-                        .bigText(
-                            message
-                        )
-                )
-
-                .setContentIntent(
-                    pendingIntent
-                )
-
-                /*
-                 * Notifikasi deadline selalu
-                 * dianggap high priority.
-                 */
-                .setPriority(
-                    NotificationCompat
-                        .PRIORITY_HIGH
-                )
-
-                /*
-                 * Tidak hilang saat ditap.
-                 */
-                .setAutoCancel(
-                    false
-                )
-
-                /*
-                 * Tidak bisa di-swipe.
-                 */
-                .setOngoing(
-                    true
-                )
-
-                /*
-                 * Jangan bunyi berulang kali
-                 * setiap Worker berjalan.
-                 */
-                .setOnlyAlertOnce(
-                    true
-                )
-
-        /*
-         * Tampilan tambahan untuk overdue.
-         *
-         * Android akan tetap menggunakan channel
-         * yang sama, tetapi title/message berbeda.
-         */
-        if (
-            overdue
-        ) {
-
-            builder.setCategory(
-                NotificationCompat
-                    .CATEGORY_ALARM
-            )
-
+        if (overdue) {
+            builder.setCategory(NotificationCompat.CATEGORY_ALARM)
         } else {
-
-            builder.setCategory(
-                NotificationCompat
-                    .CATEGORY_REMINDER
-            )
+            builder.setCategory(NotificationCompat.CATEGORY_REMINDER)
         }
 
         NotificationManagerCompat
             .from(context)
-            .notify(
-
-                notificationId,
-
-                builder.build()
-            )
+            .notify(notificationId, builder.build())
     }
-
-
-    // =================================================
-    // CANCEL TASK
-    // =================================================
 
     fun cancelTaskNotification(
         context: Context,
         taskId: String
     ) {
-
         NotificationManagerCompat
             .from(context)
-            .cancel(
-
-                taskNotificationId(
-                    taskId
-                )
-            )
+            .cancel(taskNotificationId(taskId))
     }
-
-
-    // =================================================
-    // JADWAL KULIAH
-    // SEMI PERMANEN
-    // TAP → HILANG
-    // =================================================
 
     fun showScheduleNotification(
         context: Context,
@@ -465,189 +188,73 @@ object NotificationHelper {
         title: String,
         message: String
     ) {
+        if (!canNotify(context)) return
 
-        if (
-            !canNotify(context)
-        ) {
+        createChannels(context)
 
-            return
+        val notificationId = scheduleNotificationId(scheduleId)
+
+        val intent = Intent(
+            context,
+            ScheduleNotificationReceiver::class.java
+        ).apply {
+            putExtra("notification_id", notificationId)
         }
 
-        createChannels(
-            context
+        val pendingIntent = PendingIntent.getBroadcast(
+            context,
+            notificationId,
+            intent,
+            PendingIntent.FLAG_UPDATE_CURRENT or
+                    PendingIntent.FLAG_IMMUTABLE
         )
 
-        val notificationId =
-            scheduleNotificationId(
-                scheduleId
-            )
-
-        val intent =
-            Intent(
-
-                context,
-
-                ScheduleNotificationReceiver::class.java
-
-            ).apply {
-
-                putExtra(
-                    "notification_id",
-                    notificationId
-                )
-            }
-
-        val pendingIntent =
-            PendingIntent.getBroadcast(
-
-                context,
-
-                notificationId,
-
-                intent,
-
-                PendingIntent.FLAG_UPDATE_CURRENT or
-                        PendingIntent.FLAG_IMMUTABLE
-            )
-
-        val notification =
-            NotificationCompat
-                .Builder(
-
-                    context,
-
-                    SCHEDULE_CHANNEL_ID
-                )
-
-                .setSmallIcon(
-                    R.drawable.ic_notification
-                )
-
-                .setContentTitle(
-                    title
-                )
-
-                .setContentText(
-                    message
-                )
-
-                .setStyle(
-
-                    NotificationCompat
-                        .BigTextStyle()
-                        .bigText(
-                            message
-                        )
-                )
-
-                .setPriority(
-                    NotificationCompat
-                        .PRIORITY_HIGH
-                )
-
-                .setContentIntent(
-                    pendingIntent
-                )
-
-                /*
-                 * Jadwal tetap mengikuti
-                 * perilaku sebelumnya.
-                 */
-                .setAutoCancel(
-                    false
-                )
-
-                .setOngoing(
-                    true
-                )
-
-                .build()
+        val notification = NotificationCompat
+            .Builder(context, SCHEDULE_CHANNEL_ID)
+            .setSmallIcon(R.drawable.ic_notification)
+            .setContentTitle(title)
+            .setContentText(message)
+            .setStyle(NotificationCompat.BigTextStyle().bigText(message))
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setContentIntent(pendingIntent)
+            .setAutoCancel(false)
+            .setOngoing(true)
+            .build()
 
         NotificationManagerCompat
             .from(context)
-            .notify(
-
-                notificationId,
-
-                notification
-            )
+            .notify(notificationId, notification)
     }
 
-
-    // =================================================
-    // ID
-    // =================================================
-
-    private fun taskNotificationId(
-        taskId: String
-    ): Int {
-
-        val hash =
-            abs(
-                taskId.hashCode()
-            )
-
-        return if (
-            hash == 0
-        ) {
-
-            2000
-
-        } else {
-
-            hash
-        }
+    /**
+     * Clears every notification currently posted by MyTask on this device.
+     * Needed when changing accounts so account A's reminders cannot remain
+     * visible while account B is active.
+     */
+    fun cancelAllAppNotifications(context: Context) {
+        NotificationManagerCompat
+            .from(context)
+            .cancelAll()
     }
 
-
-    private fun scheduleNotificationId(
-        scheduleId: String
-    ): Int {
-
-        val hash =
-            abs(
-                scheduleId.hashCode()
-            )
-
-        return if (
-            hash == 0
-        ) {
-
-            3000
-
-        } else {
-
-            hash
-        }
+    private fun taskNotificationId(taskId: String): Int {
+        val hash = abs(taskId.hashCode())
+        return if (hash == 0) 2000 else hash
     }
 
+    private fun scheduleNotificationId(scheduleId: String): Int {
+        val hash = abs(scheduleId.hashCode())
+        return if (hash == 0) 3000 else hash
+    }
 
-    // =================================================
-    // PERMISSION
-    // =================================================
-
-    private fun canNotify(
-        context: Context
-    ): Boolean {
-
-        if (
-            Build.VERSION.SDK_INT >=
-            Build.VERSION_CODES.TIRAMISU
-        ) {
-
+    private fun canNotify(context: Context): Boolean {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             if (
                 ContextCompat.checkSelfPermission(
-
                     context,
-
-                    Manifest.permission
-                        .POST_NOTIFICATIONS
-
-                ) !=
-                PackageManager.PERMISSION_GRANTED
-
+                    Manifest.permission.POST_NOTIFICATIONS
+                ) != PackageManager.PERMISSION_GRANTED
             ) {
-
                 return false
             }
         }
