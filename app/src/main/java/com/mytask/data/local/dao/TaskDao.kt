@@ -31,10 +31,7 @@ interface TaskDao {
         AND isCompleted = 0
         """
     )
-    fun getTodayDeadlineCount(
-        start: Date,
-        end: Date
-    ): Flow<Int>
+    fun getTodayDeadlineCount(start: Date, end: Date): Flow<Int>
 
     @Query(
         """
@@ -44,13 +41,10 @@ interface TaskDao {
         ORDER BY deadline ASC
         """
     )
-    fun getPendingTasksBetween(
-        start: Date,
-        end: Date
-    ): Flow<List<TaskEntity>>
+    fun getPendingTasksBetween(start: Date, end: Date): Flow<List<TaskEntity>>
 
     @Insert
-    suspend fun insert(task: TaskEntity)
+    suspend fun insert(task: TaskEntity): Long
 
     @Insert
     suspend fun insertAll(tasks: List<TaskEntity>)
