@@ -22,16 +22,17 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.MenuBook
-import androidx.compose.material.icons.filled.RadioButtonUnchecked
 import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.Task
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -63,6 +64,7 @@ fun DashboardScreen(
     onTasksClick: () -> Unit = {},
     onScheduleClick: () -> Unit = {},
     onCalendarClick: () -> Unit = {},
+    onAddDataClick: () -> Unit = {},
     viewModel: DashboardViewModel = hiltViewModel()
 ) {
     val courseCount by viewModel.courseCount.collectAsState()
@@ -81,14 +83,11 @@ fun DashboardScreen(
         .sortedBy { it.deadline?.time ?: Long.MAX_VALUE }
         .take(5)
 
-    val completedTaskCount =
-        tasks.count { it.isCompleted }
+    val completedTaskCount = tasks.count { it.isCompleted }
 
-    val overdueTaskCount =
-        tasks.count { task ->
-            !task.isCompleted &&
-                    task.deadline?.let(::isOverdue) == true
-        }
+    val overdueTaskCount = tasks.count { task ->
+        !task.isCompleted && task.deadline?.let(::isOverdue) == true
+    }
 
     Scaffold(
         topBar = {
@@ -97,9 +96,7 @@ fun DashboardScreen(
                     containerColor = MaterialTheme.colorScheme.background
                 ),
                 title = {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
                         Image(
                             painter = painterResource(R.mipmap.mytask_background),
                             contentDescription = "MyTask",
@@ -123,6 +120,16 @@ fun DashboardScreen(
                     }
                 }
             )
+        },
+        floatingActionButton = {
+            FloatingActionButton(
+                onClick = onAddDataClick
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Add,
+                    contentDescription = "Tambah Data"
+                )
+            }
         }
     ) { paddingValues ->
         LazyColumn(
@@ -137,9 +144,7 @@ fun DashboardScreen(
             ),
             verticalArrangement = Arrangement.spacedBy(20.dp)
         ) {
-            item {
-                WelcomeHeader()
-            }
+            item { WelcomeHeader() }
 
             item {
                 TodaySummaryCard(
@@ -158,9 +163,7 @@ fun DashboardScreen(
             }
 
             item {
-                Column(
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(12.dp)
@@ -229,14 +232,9 @@ fun DashboardScreen(
             }
 
             if (upcomingTasks.isEmpty()) {
-                item {
-                    EmptyTaskCard()
-                }
+                item { EmptyTaskCard() }
             } else {
-                items(
-                    items = upcomingTasks,
-                    key = { it.id }
-                ) { task ->
+                items(items = upcomingTasks, key = { it.id }) { task ->
                     DashboardTaskCard(
                         task = task,
                         courses = courses,
@@ -457,13 +455,8 @@ private fun TodayScheduleCard(
             .fillMaxWidth()
             .clickable(onClick = onClick),
         shape = MaterialTheme.shapes.large,
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surface
-        ),
-        border = BorderStroke(
-            1.dp,
-            MaterialTheme.colorScheme.outline.copy(alpha = 0.45f)
-        )
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.45f))
     ) {
         if (schedules.isEmpty()) {
             Column(Modifier.padding(20.dp)) {
@@ -500,10 +493,7 @@ private fun TodayScheduleCard(
             Column(Modifier.padding(vertical = 8.dp)) {
                 schedules.forEachIndexed { index, schedule ->
                     val course = courses.find { it.id == schedule.courseId }
-                    TodayScheduleRow(
-                        schedule = schedule,
-                        courseName = course?.name ?: "Mata Kuliah"
-                    )
+                    TodayScheduleRow(schedule = schedule, courseName = course?.name ?: "Mata Kuliah")
                     if (index < schedules.lastIndex) {
                         HorizontalDivider(
                             modifier = Modifier.padding(horizontal = 18.dp, vertical = 4.dp),
@@ -517,10 +507,7 @@ private fun TodayScheduleCard(
 }
 
 @Composable
-private fun TodayScheduleRow(
-    schedule: ScheduleEntity,
-    courseName: String
-) {
+private fun TodayScheduleRow(schedule: ScheduleEntity, courseName: String) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -528,47 +515,23 @@ private fun TodayScheduleRow(
         verticalAlignment = Alignment.CenterVertically
     ) {
         Column(Modifier.width(68.dp)) {
-            Text(
-                text = schedule.startTime,
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold
-            )
-            Text(
-                text = schedule.endTime,
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
+            Text(text = schedule.startTime, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+            Text(text = schedule.endTime, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         Spacer(Modifier.width(14.dp))
-        Surface(
-            modifier = Modifier.size(8.dp),
-            shape = CircleShape,
-            color = MaterialTheme.colorScheme.primary
-        ) {}
+        Surface(modifier = Modifier.size(8.dp), shape = CircleShape, color = MaterialTheme.colorScheme.primary) {}
         Spacer(Modifier.width(14.dp))
         Column(Modifier.weight(1f)) {
-            Text(
-                text = courseName,
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.SemiBold
-            )
+            Text(text = courseName, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
             if (schedule.room.isNotBlank()) {
-                Text(
-                    text = schedule.room,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
+                Text(text = schedule.room, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
     }
 }
 
 @Composable
-private fun DashboardTaskCard(
-    task: TaskEntity,
-    courses: List<CourseEntity>,
-    onClick: () -> Unit
-) {
+private fun DashboardTaskCard(task: TaskEntity, courses: List<CourseEntity>, onClick: () -> Unit) {
     val course = courses.find { it.id == task.courseId }
     val deadlineLabel = task.deadline?.let { relativeDeadline(it) }
     val overdue = task.deadline?.let { isOverdue(it) } == true
@@ -578,91 +541,41 @@ private fun DashboardTaskCard(
             .fillMaxWidth()
             .clickable(onClick = onClick),
         shape = MaterialTheme.shapes.large,
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surface
-        ),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
         border = BorderStroke(
             1.dp,
-            if (overdue) {
-                MaterialTheme.colorScheme.error.copy(alpha = 0.55f)
-            } else {
-                MaterialTheme.colorScheme.outline.copy(alpha = 0.45f)
-            }
+            if (overdue) MaterialTheme.colorScheme.error.copy(alpha = 0.5f)
+            else MaterialTheme.colorScheme.outline.copy(alpha = 0.45f)
         )
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(16.dp),
+                .padding(horizontal = 14.dp, vertical = 12.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Icon(
-                imageVector = if (task.isCompleted) {
-                    Icons.Default.CheckCircle
-                } else {
-                    Icons.Default.RadioButtonUnchecked
-                },
-                contentDescription = "Status tugas",
-                tint = if (task.isCompleted) {
-                    MaterialTheme.colorScheme.primary
-                } else {
-                    MaterialTheme.colorScheme.onSurfaceVariant
-                },
-                modifier = Modifier.size(24.dp)
-            )
+            Surface(
+                modifier = Modifier.size(10.dp),
+                shape = CircleShape,
+                color = if (overdue) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary
+            ) {}
             Spacer(Modifier.width(12.dp))
             Column(Modifier.weight(1f)) {
-                Text(
-                    text = task.title,
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.SemiBold
-                )
-                Spacer(Modifier.height(2.dp))
+                Text(text = task.title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
                 Text(
                     text = course?.name ?: "Mata Kuliah belum dipilih",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
-                if (!task.isCompleted && deadlineLabel != null) {
-                    Spacer(Modifier.height(8.dp))
-                    Surface(
-                        shape = RoundedCornerShape(8.dp),
-                        color = if (overdue) {
-                            MaterialTheme.colorScheme.errorContainer
-                        } else {
-                            MaterialTheme.colorScheme.secondaryContainer
-                        }
-                    ) {
-                        Text(
-                            text = deadlineLabel,
-                            style = MaterialTheme.typography.labelMedium,
-                            color = if (overdue) {
-                                MaterialTheme.colorScheme.onErrorContainer
-                            } else {
-                                MaterialTheme.colorScheme.onSecondaryContainer
-                            },
-                            modifier = Modifier.padding(
-                                horizontal = 8.dp,
-                                vertical = 5.dp
-                            )
-                        )
-                    }
-                } else if (task.isCompleted) {
+                if (deadlineLabel != null) {
                     Spacer(Modifier.height(6.dp))
                     Text(
-                        text = "Tugas selesai",
+                        text = deadlineLabel,
                         style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.primary,
-                        fontWeight = FontWeight.SemiBold
+                        color = if (overdue) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary
                     )
                 }
             }
-            Icon(
-                imageVector = Icons.Default.KeyboardArrowRight,
-                contentDescription = "Buka tugas",
-                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.size(20.dp)
-            )
         }
     }
 }
@@ -672,85 +585,27 @@ private fun EmptyTaskCard() {
     Card(
         modifier = Modifier.fillMaxWidth(),
         shape = MaterialTheme.shapes.large,
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceVariant
-        )
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
     ) {
-        Row(
+        Text(
+            text = "Belum ada tugas mendatang.",
             modifier = Modifier.padding(20.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Surface(
-                modifier = Modifier.size(42.dp),
-                shape = RoundedCornerShape(12.dp),
-                color = MaterialTheme.colorScheme.surface
-            ) {
-                Box(contentAlignment = Alignment.Center) {
-                    Icon(
-                        Icons.Default.CheckCircle,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.primary
-                    )
-                }
-            }
-            Spacer(Modifier.width(14.dp))
-            Column {
-                Text(
-                    text = "Semua tugas selesai",
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.SemiBold
-                )
-                Spacer(Modifier.height(2.dp))
-                Text(
-                    text = "Tidak ada tugas aktif untuk ditampilkan.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-        }
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
     }
 }
 
-private fun isOverdue(deadline: java.util.Date): Boolean {
-    val today = Calendar.getInstance().apply {
-        set(Calendar.HOUR_OF_DAY, 0)
-        set(Calendar.MINUTE, 0)
-        set(Calendar.SECOND, 0)
-        set(Calendar.MILLISECOND, 0)
-    }
-    val target = Calendar.getInstance().apply {
-        time = deadline
-        set(Calendar.HOUR_OF_DAY, 0)
-        set(Calendar.MINUTE, 0)
-        set(Calendar.SECOND, 0)
-        set(Calendar.MILLISECOND, 0)
-    }
-    return target.timeInMillis < today.timeInMillis
-}
+private fun isOverdue(deadline: java.util.Date): Boolean = deadline.before(java.util.Date())
 
 private fun relativeDeadline(deadline: java.util.Date): String {
-    val today = Calendar.getInstance().apply {
-        set(Calendar.HOUR_OF_DAY, 0)
-        set(Calendar.MINUTE, 0)
-        set(Calendar.SECOND, 0)
-        set(Calendar.MILLISECOND, 0)
-    }
-    val target = Calendar.getInstance().apply {
-        time = deadline
-        set(Calendar.HOUR_OF_DAY, 0)
-        set(Calendar.MINUTE, 0)
-        set(Calendar.SECOND, 0)
-        set(Calendar.MILLISECOND, 0)
-    }
-
-    val days = TimeUnit.MILLISECONDS.toDays(
-        target.timeInMillis - today.timeInMillis
-    )
-
+    val now = System.currentTimeMillis()
+    val diff = deadline.time - now
+    val days = TimeUnit.MILLISECONDS.toDays(kotlin.math.abs(diff))
     return when {
-        days < 0 -> "Terlambat ${-days} hari"
-        days == 0L -> "Hari ini"
-        days == 1L -> "1 hari lagi"
-        else -> "$days hari lagi"
+        diff < 0 -> "Terlambat ${days.coerceAtLeast(1)} hari"
+        days == 0L -> "Deadline hari ini"
+        days == 1L -> "Besok"
+        else -> "${days} hari lagi"
     }
 }
