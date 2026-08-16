@@ -9,6 +9,7 @@ import androidx.datastore.preferences.preferencesDataStore
 import com.mytask.debug.AuthDebugLog
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.map
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -70,10 +71,20 @@ class UserProfileRepository @Inject constructor(
                 ?.takeIf { it.isNotBlank() }
         }
 
+    /**
+     * Emits only the start signal for a cloud restore.
+     *
+     * The false value is intentionally not emitted after
+     * clearCloudRestorePending(). This prevents MainActivity from treating the
+     * completion of a restore as a brand-new authentication-state change and
+     * hiding the onboarding template dialog immediately after it appears.
+     * The persisted DataStore value is still cleared normally, so a subsequent
+     * app launch/login starts from false again.
+     */
     val restorePending: Flow<Boolean> =
-        context.userProfileDataStore.data.map { preferences ->
-            preferences[RESTORE_PENDING_KEY] ?: false
-        }
+        context.userProfileDataStore.data
+            .map { preferences -> preferences[RESTORE_PENDING_KEY] ?: false }
+            .filter { it }
 
     suspend fun saveProfile(
         uid: String,
@@ -90,11 +101,6 @@ class UserProfileRepository @Inject constructor(
         )
     }
 
-    /**
-     * Atomically commits the authenticated local session and marks that this
-     * login should perform one cloud restore. This prevents MainActivity from
-     * observing the UID before the restorePending flag is available.
-     */
     suspend fun saveAuthenticatedSession(
         uid: String,
         name: String,
@@ -107,7 +113,7 @@ class UserProfileRepository @Inject constructor(
             preferences[RESTORE_PENDING_KEY] = true
         }
         AuthDebugLog.d(
-            "PROFILE_STORE authenticated session committed atomically: uid=${AuthDebugLog.uid(uid)} restorePending=true"
+            "PROFILE_STORE authenticated session saved: uid=${AuthDebugLog.uid(uid)} restorePending=true"
         )
     }
 
@@ -115,12 +121,11 @@ class UserProfileRepository @Inject constructor(
         name: String,
         program: String
     ) {
-        context.userProfileDataStore.edit { preferences ->
-            preferences[UID_KEY] = "guest"
-            preferences[NAME_KEY] = name.trim()
-            preferences[PROGRAM_KEY] = program.trim()
-            preferences[RESTORE_PENDING_KEY] = false
-        }
+        saveProfile(
+            uid = "guest",
+            name = name,
+            program = program
+        )
         AuthDebugLog.d("PROFILE_STORE guest profile saved")
     }
 
