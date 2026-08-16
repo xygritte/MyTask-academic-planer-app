@@ -17,8 +17,9 @@ jobs:
           fetch-depth: 0
 
       - name: Patch MainActivity logout callback
-        shell: python
+        shell: bash
         run: |
+          python3 - <<'PY'
           from pathlib import Path
 
           path = Path('app/src/main/java/com/mytask/MainActivity.kt')
@@ -58,6 +59,7 @@ jobs:
               raise SystemExit('Expected logout success block not found')
 
           path.write_text(text, encoding='utf-8')
+          PY
 
       - name: Remove patch workflow and commit
         shell: bash
