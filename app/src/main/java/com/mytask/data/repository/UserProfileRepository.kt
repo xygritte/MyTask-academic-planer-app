@@ -39,11 +39,6 @@ class UserProfileRepository @Inject constructor(
     val profile: Flow<UserProfile?> =
         context.userProfileDataStore.data.map { preferences: Preferences ->
 
-            val uid =
-                preferences[UID_KEY]
-                    ?.trim()
-                    .orEmpty()
-
             val name =
                 preferences[NAME_KEY]
                     ?.trim()
@@ -55,7 +50,6 @@ class UserProfileRepository @Inject constructor(
                     .orEmpty()
 
             if (
-                uid.isBlank() ||
                 name.isBlank() ||
                 program.isBlank()
             ) {
@@ -68,22 +62,34 @@ class UserProfileRepository @Inject constructor(
             }
         }
 
+    val uid: Flow<String?> =
+        context.userProfileDataStore.data.map { preferences ->
+            preferences[UID_KEY]
+                ?.trim()
+                ?.takeIf { it.isNotBlank() }
+        }
+
     suspend fun saveProfile(
         uid: String,
         name: String,
         program: String
     ) {
         context.userProfileDataStore.edit { preferences ->
-
-            preferences[UID_KEY] =
-                uid.trim()
-
-            preferences[NAME_KEY] =
-                name.trim()
-
-            preferences[PROGRAM_KEY] =
-                program.trim()
+            preferences[UID_KEY] = uid.trim()
+            preferences[NAME_KEY] = name.trim()
+            preferences[PROGRAM_KEY] = program.trim()
         }
+    }
+
+    suspend fun saveGuestProfile(
+        name: String,
+        program: String
+    ) {
+        saveProfile(
+            uid = "guest",
+            name = name,
+            program = program
+        )
     }
 
     suspend fun clearProfile() {
