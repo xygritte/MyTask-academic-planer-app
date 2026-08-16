@@ -20,5 +20,11 @@ data class TaskEntity(
 
     val priority: Int = 1,
 
-    val isCompleted: Boolean = false
+    val isCompleted: Boolean = false,
+
+    /**
+     * Timestamp of the most recent transition into the completed state.
+     * Null means the task has never been completed (or predates this field).
+     */
+    val completedAt: Date? = null
 )
