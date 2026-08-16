@@ -14,16 +14,16 @@ interface ScheduleDao {
     @Query(
         """
         SELECT * FROM schedules
-        ORDER BY dayOfWeek ASC, startTime ASC
+        ORDER BY dayOfWeek ASC, startMinutes ASC
         """
     )
     fun getAllSchedules(): Flow<List<ScheduleEntity>>
 
     @Query(
         """
-    SELECT * FROM schedules
-    ORDER BY dayOfWeek ASC, startTime ASC
-    """
+        SELECT * FROM schedules
+        ORDER BY dayOfWeek ASC, startMinutes ASC
+        """
     )
     suspend fun getAllSchedulesSnapshot(): List<ScheduleEntity>
 
@@ -41,7 +41,7 @@ interface ScheduleDao {
         """
         SELECT * FROM schedules
         WHERE dayOfWeek = :dayOfWeek
-        ORDER BY startTime ASC
+        ORDER BY startMinutes ASC
         """
     )
     fun getSchedulesByDay(
