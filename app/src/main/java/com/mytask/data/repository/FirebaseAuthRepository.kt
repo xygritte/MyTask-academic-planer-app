@@ -13,11 +13,13 @@ import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.SetOptions
 import com.mytask.debug.AuthDebugLog
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.tasks.await
+import kotlinx.coroutines.withContext
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -64,10 +66,7 @@ class FirebaseAuthRepository @Inject constructor(
 
         return try {
             val authResult = auth
-                .createUserWithEmailAndPassword(
-                    email.trim(),
-                    password
-                )
+                .createUserWithEmailAndPassword(email.trim(), password)
                 .await()
 
             val user = authResult.user
@@ -94,18 +93,19 @@ class FirebaseAuthRepository @Inject constructor(
                 program = cleanProgram
             )
 
-            // Persist the local session immediately after Firebase succeeds.
-            // The Compose login screen may leave the composition as soon as
-            // AuthState becomes signed-in, so this must not depend on Firestore.
-            userProfileRepository.saveProfile(
-                uid = user.uid,
-                name = profile.name,
-                program = profile.program
-            )
-            userProfileRepository.markCloudRestorePending()
-            AuthDebugLog.d(
-                "REGISTER local session committed: uid=${AuthDebugLog.uid(user.uid)}"
-            )
+            // Once Firebase authentication succeeds, committing the local
+            // session must survive Compose leaving the LoginScreen.
+            withContext(NonCancellable) {
+                userProfileRepository.saveProfile(
+                    uid = user.uid,
+                    name = profile.name,
+                    program = profile.program
+                )
+                userProfileRepository.markCloudRestorePending()
+                AuthDebugLog.d(
+                    "REGISTER local session committed: uid=${AuthDebugLog.uid(user.uid)} restorePending=true"
+                )
+            }
 
             runCatching {
                 saveCloudProfile(user, profile)
@@ -142,10 +142,7 @@ class FirebaseAuthRepository @Inject constructor(
 
         return try {
             val authResult = auth
-                .signInWithEmailAndPassword(
-                    email.trim(),
-                    password
-                )
+                .signInWithEmailAndPassword(email.trim(), password)
                 .await()
 
             val user = authResult.user
@@ -155,9 +152,6 @@ class FirebaseAuthRepository @Inject constructor(
                 "EMAIL_LOGIN Firebase success: uid=${AuthDebugLog.uid(user.uid)}"
             )
 
-            // Commit a local session before any Firestore call. This guarantees
-            // the app can continue even when the login screen composition is
-            // removed immediately after Firebase AuthState changes.
             val immediateProfile = UserProfile(
                 name = user.displayName
                     ?.trim()
@@ -166,15 +160,19 @@ class FirebaseAuthRepository @Inject constructor(
                 program = "Program Studi belum diatur"
             )
 
-            userProfileRepository.saveProfile(
-                uid = user.uid,
-                name = immediateProfile.name,
-                program = immediateProfile.program
-            )
-            userProfileRepository.markCloudRestorePending()
-            AuthDebugLog.d(
-                "EMAIL_LOGIN local session committed: uid=${AuthDebugLog.uid(user.uid)} restorePending=true"
-            )
+            // This write must complete even if LoginScreen is removed after
+            // FirebaseAuth emits signedIn=true.
+            withContext(NonCancellable) {
+                userProfileRepository.saveProfile(
+                    uid = user.uid,
+                    name = immediateProfile.name,
+                    program = immediateProfile.program
+                )
+                userProfileRepository.markCloudRestorePending()
+                AuthDebugLog.d(
+                    "EMAIL_LOGIN local session committed: uid=${AuthDebugLog.uid(user.uid)} restorePending=true"
+                )
+            }
 
             val profile = runCatching {
                 loadCloudProfile(user)
@@ -189,11 +187,13 @@ class FirebaseAuthRepository @Inject constructor(
                 immediateProfile
             }
 
-            userProfileRepository.saveProfile(
-                uid = user.uid,
-                name = profile.name,
-                program = profile.program
-            )
+            withContext(NonCancellable) {
+                userProfileRepository.saveProfile(
+                    uid = user.uid,
+                    name = profile.name,
+                    program = profile.program
+                )
+            }
             AuthDebugLog.d(
                 "EMAIL_LOGIN local profile saved: uid=${AuthDebugLog.uid(user.uid)}"
             )
@@ -228,9 +228,7 @@ class FirebaseAuthRepository @Inject constructor(
 
             val googleIdOption = GetGoogleIdOption.Builder()
                 .setServerClientId(
-                    context.getString(
-                        com.mytask.R.string.default_web_client_id
-                    )
+                    context.getString(com.mytask.R.string.default_web_client_id)
                 )
                 .setFilterByAuthorizedAccounts(false)
                 .setAutoSelectEnabled(false)
@@ -240,10 +238,7 @@ class FirebaseAuthRepository @Inject constructor(
                 .addCredentialOption(googleIdOption)
                 .build()
 
-            val result = credentialManager.getCredential(
-                context,
-                request
-            )
+            val result = credentialManager.getCredential(context, request)
             AuthDebugLog.d("GOOGLE_LOGIN credential received")
 
             val googleCredential = GoogleIdTokenCredential.createFrom(
@@ -274,17 +269,19 @@ class FirebaseAuthRepository @Inject constructor(
                 program = "Program Studi belum diatur"
             )
 
-            // Same rule as Email login: save the local authenticated session
-            // before attempting any network/profile work.
-            userProfileRepository.saveProfile(
-                uid = user.uid,
-                name = immediateProfile.name,
-                program = immediateProfile.program
-            )
-            userProfileRepository.markCloudRestorePending()
-            AuthDebugLog.d(
-                "GOOGLE_LOGIN local session committed: uid=${AuthDebugLog.uid(user.uid)} restorePending=true"
-            )
+            // Critical session commit. Use NonCancellable because AuthState
+            // may remove LoginScreen from Compose immediately after sign-in.
+            withContext(NonCancellable) {
+                userProfileRepository.saveProfile(
+                    uid = user.uid,
+                    name = immediateProfile.name,
+                    program = immediateProfile.program
+                )
+                userProfileRepository.markCloudRestorePending()
+                AuthDebugLog.d(
+                    "GOOGLE_LOGIN local session committed: uid=${AuthDebugLog.uid(user.uid)} restorePending=true"
+                )
+            }
 
             val existingProfile = runCatching {
                 loadCloudProfile(user)
@@ -311,11 +308,13 @@ class FirebaseAuthRepository @Inject constructor(
                 }
             }
 
-            userProfileRepository.saveProfile(
-                uid = user.uid,
-                name = profile.name,
-                program = profile.program
-            )
+            withContext(NonCancellable) {
+                userProfileRepository.saveProfile(
+                    uid = user.uid,
+                    name = profile.name,
+                    program = profile.program
+                )
+            }
             AuthDebugLog.d(
                 "GOOGLE_LOGIN local profile saved: uid=${AuthDebugLog.uid(user.uid)}"
             )
@@ -362,12 +361,13 @@ class FirebaseAuthRepository @Inject constructor(
             auth.signOut()
             AuthDebugLog.d("GUEST Firebase signOut executed")
 
-            userProfileRepository.saveGuestProfile(
-                name = profile.name,
-                program = profile.program
-            )
-
-            userProfileRepository.clearCloudRestorePending()
+            withContext(NonCancellable) {
+                userProfileRepository.saveGuestProfile(
+                    name = profile.name,
+                    program = profile.program
+                )
+                userProfileRepository.clearCloudRestorePending()
+            }
             AuthDebugLog.d("GUEST local profile saved; restorePending=false")
 
             profile
@@ -400,11 +400,13 @@ class FirebaseAuthRepository @Inject constructor(
                 cachedOrFirebaseProfile(refreshedUser)
             }
 
-            userProfileRepository.saveProfile(
-                uid = refreshedUser.uid,
-                name = profile.name,
-                program = profile.program
-            )
+            withContext(NonCancellable) {
+                userProfileRepository.saveProfile(
+                    uid = refreshedUser.uid,
+                    name = profile.name,
+                    program = profile.program
+                )
+            }
 
             AuthDebugLog.d(
                 "RELOAD_PROFILE success: uid=${AuthDebugLog.uid(refreshedUser.uid)}"
@@ -433,7 +435,9 @@ class FirebaseAuthRepository @Inject constructor(
         )
         cloudDataSyncRepository.clearLocalSessionData()
         AuthDebugLog.d("LOGOUT local workspace cleared")
-        userProfileRepository.clearProfile()
+        withContext(NonCancellable) {
+            userProfileRepository.clearProfile()
+        }
         AuthDebugLog.d("LOGOUT local profile cleared")
         auth.signOut()
         AuthDebugLog.d("LOGOUT Firebase signOut executed")
