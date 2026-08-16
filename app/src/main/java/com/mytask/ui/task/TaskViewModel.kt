@@ -71,14 +71,21 @@ class TaskViewModel @Inject constructor(
 
     fun updateTask(task: TaskEntity, onSaved: () -> Unit) {
         viewModelScope.launch {
-            repository.updateTask(task)
-
-            if (task.isCompleted) {
-                NotificationHelper.cancelTaskNotification(appContext, task.id.toString())
-                NotificationHelper.clearOverdueNotificationState(appContext, task.id.toString())
-                ReminderScheduler.cancelTaskDeadline(appContext, task.id)
+            val updatedTask = if (task.isCompleted) {
+                task.copy(completedAt = task.completedAt ?: Date())
             } else {
-                ReminderScheduler.scheduleTaskDeadline(appContext, task.id, task.deadline)
+                task.copy(completedAt = null)
+            }
+
+            repository.updateTask(updatedTask)
+
+            if (updatedTask.isCompleted) {
+                NotificationHelper.cancelTaskNotification(appContext, updatedTask.id.toString())
+                NotificationHelper.clearOverdueNotificationState(appContext, updatedTask.id.toString())
+                ReminderScheduler.cancelTaskDeadline(appContext, updatedTask.id)
+            } else {
+                NotificationHelper.clearOverdueNotificationState(appContext, updatedTask.id.toString())
+                ReminderScheduler.scheduleTaskDeadline(appContext, updatedTask.id, updatedTask.deadline)
             }
 
             ReminderScheduler.syncToday(appContext)
@@ -98,16 +105,21 @@ class TaskViewModel @Inject constructor(
 
     fun toggleTask(task: TaskEntity) {
         viewModelScope.launch {
-            val updatedTask = task.copy(isCompleted = !task.isCompleted)
+            val completing = !task.isCompleted
+            val updatedTask = task.copy(
+                isCompleted = completing,
+                completedAt = if (completing) Date() else null
+            )
+
             repository.updateTask(updatedTask)
 
             if (updatedTask.isCompleted) {
-                NotificationHelper.cancelTaskNotification(appContext, task.id.toString())
-                NotificationHelper.clearOverdueNotificationState(appContext, task.id.toString())
-                ReminderScheduler.cancelTaskDeadline(appContext, task.id)
+                NotificationHelper.cancelTaskNotification(appContext, updatedTask.id.toString())
+                NotificationHelper.clearOverdueNotificationState(appContext, updatedTask.id.toString())
+                ReminderScheduler.cancelTaskDeadline(appContext, updatedTask.id)
             } else {
-                NotificationHelper.clearOverdueNotificationState(appContext, task.id.toString())
-                ReminderScheduler.scheduleTaskDeadline(appContext, task.id, updatedTask.deadline)
+                NotificationHelper.clearOverdueNotificationState(appContext, updatedTask.id.toString())
+                ReminderScheduler.scheduleTaskDeadline(appContext, updatedTask.id, updatedTask.deadline)
             }
 
             ReminderScheduler.syncToday(appContext)
