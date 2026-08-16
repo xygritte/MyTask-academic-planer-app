@@ -123,10 +123,15 @@ dependencies {
 
     // Image picker / crop
     implementation(
-        "com.github.yalantis:ucrop:2.2.11"
-    )
-    implementation(
         "androidx.appcompat:appcompat:1.7.0"
+    )
+
+    implementation(
+        "androidx.transition:transition:1.5.1"
+    )
+
+    implementation(
+        "com.github.yalantis:ucrop:2.2.11"
     )
 
     // Hilt
