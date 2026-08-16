@@ -21,7 +21,8 @@ import javax.inject.Singleton
 
 @Singleton
 class FirebaseAuthRepository @Inject constructor(
-    private val userProfileRepository: UserProfileRepository
+    private val userProfileRepository: UserProfileRepository,
+    private val cloudDataSyncRepository: CloudDataSyncRepository
 ) {
 
     private val auth: FirebaseAuth = FirebaseAuth.getInstance()
@@ -59,6 +60,11 @@ class FirebaseAuthRepository @Inject constructor(
             val user = authResult.user
                 ?: error("Akun Firebase tidak berhasil dibuat.")
 
+            // Registering a new account always starts from an empty local
+            // academic workspace. The previous account's Room data must not
+            // be inherited.
+            cloudDataSyncRepository.clearLocalSessionData()
+
             val cleanName = name.trim()
             val cleanProgram = program.trim()
 
@@ -73,7 +79,6 @@ class FirebaseAuthRepository @Inject constructor(
                 program = cleanProgram
             )
 
-            // Authentication harus tetap berhasil walaupun Firestore belum siap.
             runCatching {
                 saveCloudProfile(user, profile)
             }
@@ -107,7 +112,6 @@ class FirebaseAuthRepository @Inject constructor(
             val user = authResult.user
                 ?: error("Akun tidak ditemukan.")
 
-            // Firestore bukan syarat agar user dapat masuk.
             val profile = runCatching {
                 loadCloudProfile(user)
             }.getOrElse {
@@ -215,6 +219,10 @@ class FirebaseAuthRepository @Inject constructor(
         program: String
     ): Result<UserProfile> {
         return runCatching {
+            // Guest is a separate local session. Never expose the previous
+            // Firebase account's academic data to the guest workspace.
+            cloudDataSyncRepository.clearLocalSessionData()
+
             val profile = UserProfile(
                 name = name.trim(),
                 program = program.trim()
@@ -272,6 +280,7 @@ class FirebaseAuthRepository @Inject constructor(
     }
 
     suspend fun clearLocalSession() {
+        cloudDataSyncRepository.clearLocalSessionData()
         userProfileRepository.clearProfile()
         auth.signOut()
     }
