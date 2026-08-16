@@ -49,40 +49,54 @@ class CloudDataSyncRepository @Inject constructor(
             )
         }
 
+    /**
+     * Restores the authenticated user's last explicitly uploaded workspace.
+     *
+     * This method is intentionally one-way: login may DOWNLOAD data, but it
+     * never uploads local data. Uploading is an explicit user action from the
+     * Profile screen.
+     */
     suspend fun syncOnLogin(uid: String): Boolean {
         require(uid.isNotBlank())
 
-        clearLocalSessionData()
+        clearLocalAcademicData()
+        NotificationHelper.cancelAllAppNotifications(context)
+        ReminderScheduler.cancel(context)
 
-        return try {
-            val snapshot = document(uid).get().await()
-            val cloudJson = snapshot.getString("dataJson")
+        val snapshot =
+            document(uid)
+                .get()
+                .await()
 
-            if (cloudJson.isNullOrBlank()) {
-                val emptyJson = databaseJson.first()
-                uploadJson(uid, emptyJson)
-                ReminderScheduler.initialize(context)
-                false
-            } else {
-                replaceLocalDatabase(cloudJson)
-                saveLocalJson(uid, cloudJson)
-                ReminderScheduler.initialize(context)
-                true
-            }
-        } catch (error: Throwable) {
-            // The local database remains empty if cloud sync fails. This keeps
-            // account data isolated even during a temporary network failure.
+        val cloudJson =
+            snapshot
+                .getString("dataJson")
+                ?.takeIf { it.isNotBlank() }
+
+        if (cloudJson == null) {
             ReminderScheduler.initialize(context)
-            throw error
+            return false
         }
+
+        replaceLocalDatabase(cloudJson)
+        saveLocalJson(uid, cloudJson)
+        ReminderScheduler.initialize(context)
+        return true
     }
 
+    /**
+     * Explicit upload action used by Profile -> Simpan data ke online.
+     */
     suspend fun uploadCurrentData(uid: String) {
+        require(uid.isNotBlank())
+
         val json = databaseJson.first()
         uploadJson(uid, json)
     }
 
     suspend fun uploadJson(uid: String, json: String) {
+        require(uid.isNotBlank())
+
         document(uid)
             .set(
                 mapOf(
@@ -111,21 +125,48 @@ class CloudDataSyncRepository @Inject constructor(
     }
 
     /**
-     * Clears device-only academic state for the current session.
-     * Firestore backups and UID-specific JSON files are preserved.
+     * Clears all device-only academic state for the active session.
+     * Cloud data is never deleted here.
      */
     suspend fun clearLocalSessionData() {
         clearLocalAcademicData()
-        NotificationHelper.cancelAllAppNotifications(context)
-        ReminderScheduler.cancel(context)
+
+        NotificationHelper
+            .cancelAllAppNotifications(context)
+
+        ReminderScheduler
+            .cancel(context)
+
+        context.filesDir
+            .listFiles()
+            ?.filter {
+                it.name.startsWith("mytask_data_") &&
+                    it.name.endsWith(".json")
+            }
+            ?.forEach { file ->
+                runCatching {
+                    file.delete()
+                }
+            }
     }
 
     private suspend fun replaceLocalDatabase(json: String) {
         val root = JSONObject(json)
 
-        val courses = parseCourses(root.optJSONArray("courses"))
-        val tasks = parseTasks(root.optJSONArray("tasks"))
-        val schedules = parseSchedules(root.optJSONArray("schedules"))
+        val courses =
+            parseCourses(
+                root.optJSONArray("courses")
+            )
+
+        val tasks =
+            parseTasks(
+                root.optJSONArray("tasks")
+            )
+
+        val schedules =
+            parseSchedules(
+                root.optJSONArray("schedules")
+            )
 
         database.withTransaction {
             database.scheduleDao().deleteAll()
@@ -263,7 +304,10 @@ class CloudDataSyncRepository @Inject constructor(
                         description = item.optString("description"),
                         deadline = deadline,
                         priority = item.optInt("priority", 1),
-                        isCompleted = item.optBoolean("isCompleted", false)
+                        isCompleted = item.optBoolean(
+                            "isCompleted",
+                            false
+                        )
                     )
                 )
             }
@@ -296,10 +340,11 @@ class CloudDataSyncRepository @Inject constructor(
     }
 
     private fun localFile(uid: String): File {
-        val safeUid = uid.replace(
-            Regex("[^A-Za-z0-9._-]"),
-            "_"
-        )
+        val safeUid =
+            uid.replace(
+                Regex("[^A-Za-z0-9._-]"),
+                "_"
+            )
 
         return File(
             context.filesDir,
@@ -307,7 +352,13 @@ class CloudDataSyncRepository @Inject constructor(
         )
     }
 
-    private fun saveLocalJson(uid: String, json: String) {
-        localFile(uid).writeText(json, Charsets.UTF_8)
+    private fun saveLocalJson(
+        uid: String,
+        json: String
+    ) {
+        localFile(uid).writeText(
+            json,
+            Charsets.UTF_8
+        )
     }
 }
