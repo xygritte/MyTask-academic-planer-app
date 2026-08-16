@@ -33,6 +33,11 @@
             android:exported="false" />
 
         <receiver
+            android:name=".Notification.DeadlineReceiver"
+            android:enabled="true"
+            android:exported="false" />
+
+        <receiver
             android:name=".Notification.ScheduleNotificationReceiver"
             android:enabled="true"
             android:exported="false" />
@@ -40,17 +45,10 @@
         <activity
             android:name=".MainActivity"
             android:exported="true">
-
             <intent-filter>
-
-                <action
-                    android:name="android.intent.action.MAIN" />
-
-                <category
-                    android:name="android.intent.category.LAUNCHER" />
-
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
-
         </activity>
 
     </application>
