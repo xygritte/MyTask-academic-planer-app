@@ -13,12 +13,14 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.Dashboard
 import androidx.compose.material.icons.filled.MenuBook
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.Task
+import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
@@ -31,10 +33,12 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.zIndex
 import androidx.core.content.ContextCompat
+import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import com.mytask.data.repository.CloudDataSyncRepository
@@ -45,8 +49,10 @@ import com.mytask.data.repository.UserProfile
 import com.mytask.data.repository.UserProfileRepository
 import com.mytask.navigation.NavGraph
 import com.mytask.navigation.Screen
+import com.mytask.ui.add.AddDataDialog
 import com.mytask.ui.calendar.CalendarScreen
 import com.mytask.ui.course.CourseListScreen
+import com.mytask.ui.course.CourseViewModel
 import com.mytask.ui.dashboard.DashboardScreen
 import com.mytask.ui.loading.LoadingScreen
 import com.mytask.ui.login.LoginScreen
@@ -276,8 +282,6 @@ private fun MyTaskApp(
                 accountLoading = false
             }
         } else {
-            // Persistent session: use the local Room workspace immediately.
-            // No cloud restore is repeated when the app is simply reopened.
             syncReady = true
             accountLoading = false
             shouldShowTemplatePrompt = false
@@ -291,8 +295,6 @@ private fun MyTaskApp(
 
     val activeProfile = sessionProfile ?: currentLocalProfile
 
-    // Authenticated users must wait for the initial cloud-restore decision.
-    // A non-null local profile alone must not bypass this loading state.
     val isGuestSession =
         sessionUid == "guest" && currentFirebaseUser == null
 
@@ -438,6 +440,18 @@ private fun MyTaskMainContent(
     val navController = rememberNavController()
     val scope = rememberCoroutineScope()
 
+    val courseViewModel: CourseViewModel = hiltViewModel()
+    val courses by courseViewModel.courses.collectAsState()
+    val hasCourses = courses.isNotEmpty()
+
+    var showAddDataDialog by remember {
+        mutableStateOf(false)
+    }
+
+    var scheduleAddRequestKey by remember {
+        mutableStateOf(0)
+    }
+
     val pagerState = rememberPagerState(
         initialPage = 0,
         pageCount = { 6 }
@@ -453,6 +467,46 @@ private fun MyTaskMainContent(
             currentRoute == Screen.NotificationSettings.route ||
             currentRoute == Screen.Backup.route
 
+    fun openAddDataDialog() {
+        showAddDataDialog = true
+    }
+
+    fun openTasks() {
+        if (hasCourses) {
+            scope.launch { pagerState.animateScrollToPage(1) }
+        } else {
+            openAddDataDialog()
+        }
+    }
+
+    fun openSchedule() {
+        if (hasCourses) {
+            scope.launch { pagerState.animateScrollToPage(2) }
+        } else {
+            openAddDataDialog()
+        }
+    }
+
+    fun openAddTask() {
+        showAddDataDialog = false
+        if (hasCourses) {
+            navController.navigate("add_task?taskId=-1")
+        }
+    }
+
+    fun openAddCourse() {
+        showAddDataDialog = false
+        navController.navigate("add_course?courseId=-1")
+    }
+
+    fun openAddSchedule() {
+        showAddDataDialog = false
+        if (hasCourses) {
+            scheduleAddRequestKey += 1
+            scope.launch { pagerState.animateScrollToPage(2) }
+        }
+    }
+
     Scaffold(
         bottomBar = {
             if (!isSubScreen) {
@@ -467,17 +521,13 @@ private fun MyTaskMainContent(
                     )
                     NavigationBarItem(
                         selected = currentPage == 1,
-                        onClick = {
-                            scope.launch { pagerState.animateScrollToPage(1) }
-                        },
+                        onClick = ::openTasks,
                         icon = { Icon(Icons.Default.Task, "Tugas") },
                         alwaysShowLabel = false
                     )
                     NavigationBarItem(
                         selected = currentPage == 2,
-                        onClick = {
-                            scope.launch { pagerState.animateScrollToPage(2) }
-                        },
+                        onClick = ::openSchedule,
                         icon = { Icon(Icons.Default.Schedule, "Jadwal") },
                         alwaysShowLabel = false
                     )
@@ -532,25 +582,26 @@ private fun MyTaskMainContent(
                             onCoursesClick = {
                                 scope.launch { pagerState.animateScrollToPage(4) }
                             },
-                            onTasksClick = {
-                                scope.launch { pagerState.animateScrollToPage(1) }
-                            },
-                            onScheduleClick = {
-                                scope.launch { pagerState.animateScrollToPage(2) }
-                            },
+                            onTasksClick = ::openTasks,
+                            onScheduleClick = ::openSchedule,
                             onCalendarClick = {
                                 scope.launch { pagerState.animateScrollToPage(3) }
                             }
                         )
                         1 -> TaskListScreen(
-                            onAddTask = {
-                                navController.navigate("add_task?taskId=-1")
-                            },
+                            onAddTask = ::openAddDataDialog,
                             onEditTask = { id ->
-                                navController.navigate("add_task?taskId=$id")
+                                if (hasCourses) {
+                                    navController.navigate("add_task?taskId=$id")
+                                } else {
+                                    openAddDataDialog()
+                                }
                             }
                         )
-                        2 -> ScheduleScreen()
+                        2 -> ScheduleScreen(
+                            addRequestKey = scheduleAddRequestKey,
+                            onAddData = ::openAddDataDialog
+                        )
                         3 -> CalendarScreen(
                             onBack = {
                                 scope.launch {
@@ -561,9 +612,7 @@ private fun MyTaskMainContent(
                             }
                         )
                         4 -> CourseListScreen(
-                            onAddCourse = {
-                                navController.navigate("add_course?courseId=-1")
-                            },
+                            onAddCourse = ::openAddDataDialog,
                             onEditCourse = { id ->
                                 navController.navigate("add_course?courseId=$id")
                             }
@@ -598,6 +647,30 @@ private fun MyTaskMainContent(
                     }
                 }
             }
+
+            if (!isSubScreen && currentPage == 0) {
+                FloatingActionButton(
+                    onClick = ::openAddDataDialog,
+                    modifier = Modifier
+                        .align(Alignment.BottomEnd)
+                        .padding(16.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Add,
+                        contentDescription = "Tambah Data"
+                    )
+                }
+            }
+        }
+
+        if (showAddDataDialog) {
+            AddDataDialog(
+                hasCourses = hasCourses,
+                onDismiss = { showAddDataDialog = false },
+                onAddTask = ::openAddTask,
+                onAddSchedule = ::openAddSchedule,
+                onAddCourse = ::openAddCourse
+            )
         }
     }
 }
