@@ -63,7 +63,9 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.UserProfileChangeRequest
@@ -110,6 +112,18 @@ fun ProfileScreen(
     var isCroppingPhoto by remember { mutableStateOf(false) }
     var photoError by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
+
+    val nameFontSize = when (displayedProfile.name.trim().length) {
+        in 0..18 -> 26.sp
+        in 19..26 -> 22.sp
+        in 27..34 -> 19.sp
+        else -> 17.sp
+    }
+    val programFontSize = when (displayedProfile.program.trim().length) {
+        in 0..24 -> 16.sp
+        in 25..36 -> 14.sp
+        else -> 12.sp
+    }
 
     val cropLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.StartActivityForResult()
@@ -300,15 +314,21 @@ fun ProfileScreen(
 
                     Text(
                         text = displayedProfile.name,
-                        style = MaterialTheme.typography.headlineSmall,
+                        fontSize = nameFontSize,
+                        lineHeight = nameFontSize,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
                         fontWeight = FontWeight.Bold
                     )
 
-                    Spacer(Modifier.height(2.dp))
+                    Spacer(Modifier.height(3.dp))
 
                     Text(
                         text = displayedProfile.program,
-                        style = MaterialTheme.typography.bodyLarge,
+                        fontSize = programFontSize,
+                        lineHeight = programFontSize,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
 
@@ -505,19 +525,26 @@ fun ProfileScreen(
                                     .build()
                             ).await()
 
+                            val profileData = mapOf(
+                                "uid" to firebaseUser.uid,
+                                "name" to cleanName,
+                                "program" to cleanProgram,
+                                "email" to firebaseUser.email,
+                                "updatedAt" to System.currentTimeMillis()
+                            )
+
                             FirebaseFirestore.getInstance()
                                 .collection("users")
                                 .document(firebaseUser.uid)
-                                .set(
-                                    mapOf(
-                                        "uid" to firebaseUser.uid,
-                                        "name" to cleanName,
-                                        "program" to cleanProgram,
-                                        "email" to firebaseUser.email,
-                                        "updatedAt" to System.currentTimeMillis()
-                                    ),
-                                    SetOptions.merge()
-                                )
+                                .set(profileData, SetOptions.merge())
+                                .await()
+
+                            FirebaseFirestore.getInstance()
+                                .collection("users")
+                                .document(firebaseUser.uid)
+                                .collection("profile")
+                                .document("current")
+                                .set(profileData, SetOptions.merge())
                                 .await()
 
                             withContext(NonCancellable) {
@@ -529,7 +556,7 @@ fun ProfileScreen(
                             }
 
                             AuthDebugLog.d(
-                                "PROFILE_UPDATE online success: uid=${AuthDebugLog.uid(firebaseUser.uid)}"
+                                "PROFILE_UPDATE online success: uid=${AuthDebugLog.uid(firebaseUser.uid)} nameLength=${cleanName.length} programLength=${cleanProgram.length}"
                             )
                         } else {
                             withContext(NonCancellable) {
