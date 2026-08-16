@@ -3,6 +3,8 @@ package com.mytask.data.repository
 import android.content.Context
 import androidx.room.withTransaction
 import com.google.firebase.firestore.FirebaseFirestore
+import com.mytask.Notification.NotificationHelper
+import com.mytask.Notification.ReminderScheduler
 import com.mytask.data.local.MyTaskDatabase
 import com.mytask.data.local.entity.CourseEntity
 import com.mytask.data.local.entity.ScheduleEntity
@@ -10,7 +12,6 @@ import com.mytask.data.local.entity.TaskEntity
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
-import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.tasks.await
 import org.json.JSONArray
@@ -48,20 +49,41 @@ class CloudDataSyncRepository @Inject constructor(
             )
         }
 
+    /**
+     * Switch the local Room database to the requested account.
+     *
+     * IMPORTANT: local data from the previous account is cleared BEFORE
+     * reading the new account's cloud snapshot. A brand-new account must
+     * never inherit the previous account's local data.
+     */
     suspend fun syncOnLogin(uid: String): Boolean {
         require(uid.isNotBlank())
 
-        val snapshot = document(uid).get().await()
-        val cloudJson = snapshot.getString("dataJson")
+        clearLocalAcademicData()
+        NotificationHelper.cancelAllAppNotifications(context)
+        ReminderScheduler.cancel(context)
 
-        return if (cloudJson.isNullOrBlank()) {
-            val localJson = databaseJson.first()
-            uploadJson(uid, localJson)
-            false
-        } else {
-            replaceLocalDatabase(cloudJson)
-            saveLocalJson(uid, cloudJson)
-            true
+        return try {
+            val snapshot = document(uid).get().await()
+            val cloudJson = snapshot.getString("dataJson")
+
+            if (cloudJson.isNullOrBlank()) {
+                val emptyJson = databaseJson.first()
+                uploadJson(uid, emptyJson)
+                ReminderScheduler.initialize(context)
+                false
+            } else {
+                replaceLocalDatabase(cloudJson)
+                saveLocalJson(uid, cloudJson)
+                ReminderScheduler.initialize(context)
+                true
+            }
+        } catch (error: Throwable) {
+            // Keep the account isolated even when cloud sync is temporarily
+            // unavailable. The local DB stays empty rather than leaking the
+            // previous account's data.
+            ReminderScheduler.initialize(context)
+            throw error
         }
     }
 
@@ -90,20 +112,24 @@ class CloudDataSyncRepository @Inject constructor(
         return localFile(uid)
     }
 
+    /**
+     * Wipe only the current device's Room academic data.
+     * The user's Firestore backup and UID-specific local JSON file are kept.
+     */
+    suspend fun clearLocalAcademicData() {
+        database.withTransaction {
+            database.scheduleDao().deleteAll()
+            database.taskDao().deleteAll()
+            database.courseDao().deleteAll()
+        }
+    }
+
     private suspend fun replaceLocalDatabase(json: String) {
         val root = JSONObject(json)
 
-        val courses = parseCourses(
-            root.optJSONArray("courses")
-        )
-
-        val tasks = parseTasks(
-            root.optJSONArray("tasks")
-        )
-
-        val schedules = parseSchedules(
-            root.optJSONArray("schedules")
-        )
+        val courses = parseCourses(root.optJSONArray("courses"))
+        val tasks = parseTasks(root.optJSONArray("tasks"))
+        val schedules = parseSchedules(root.optJSONArray("schedules"))
 
         database.withTransaction {
             database.scheduleDao().deleteAll()
@@ -277,11 +303,10 @@ class CloudDataSyncRepository @Inject constructor(
     }
 
     private fun localFile(uid: String): File {
-        val safeUid =
-            uid.replace(
-                Regex("[^A-Za-z0-9._-]"),
-                "_"
-            )
+        val safeUid = uid.replace(
+            Regex("[^A-Za-z0-9._-]"),
+            "_"
+        )
 
         return File(
             context.filesDir,
