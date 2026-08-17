@@ -12,7 +12,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
-import java.util.concurrent.TimeUnit
 
 class ScheduleNotificationReceiver : BroadcastReceiver() {
 
@@ -45,7 +44,6 @@ class ScheduleNotificationReceiver : BroadcastReceiver() {
 
                     when (intent.action) {
                         ACTION_SCHEDULE_START -> {
-                            ReminderScheduler.cancelScheduleCountdown(context.applicationContext, scheduleId)
                             NotificationHelper.cancelScheduleNotification(
                                 context.applicationContext,
                                 scheduleId.toString()
@@ -56,7 +54,7 @@ class ScheduleNotificationReceiver : BroadcastReceiver() {
                             )
                             AppDebugLog.d(
                                 "NOTIFICATION",
-                                "schedule started; countdown cleared and next occurrence scheduled scheduleId=$scheduleId"
+                                "schedule started; chronometer notification cleared scheduleId=$scheduleId"
                             )
                         }
 
@@ -64,9 +62,7 @@ class ScheduleNotificationReceiver : BroadcastReceiver() {
                         ACTION_SCHEDULE_COUNTDOWN -> {
                             val startAt = ReminderScheduler.currentOrNextScheduleStartTime(schedule)
                             val remainingMillis = startAt - System.currentTimeMillis()
-
                             if (remainingMillis <= 0L) {
-                                ReminderScheduler.cancelScheduleCountdown(context.applicationContext, scheduleId)
                                 NotificationHelper.cancelScheduleNotification(
                                     context.applicationContext,
                                     scheduleId.toString()
@@ -78,13 +74,9 @@ class ScheduleNotificationReceiver : BroadcastReceiver() {
                                 return@launch
                             }
 
-                            val remainingMinutes = TimeUnit.MILLISECONDS
-                                .toMinutes(remainingMillis + 59_999L)
-
                             val course = schedule.courseId?.let {
                                 database.courseDao().getCourseById(it).first()
                             }
-
                             val message = buildString {
                                 append(schedule.startMinutes.toDisplayTime())
                                     .append(" - ")
@@ -94,28 +86,27 @@ class ScheduleNotificationReceiver : BroadcastReceiver() {
                                 if (schedule.room.isNotBlank()) {
                                     append("\nRuangan: ").append(schedule.room)
                                 }
-                                append("\n\nKuliah yang akan datang ")
-                                    .append(remainingMinutes)
-                                    .append(" menit lagi.")
+                                append("\n\nWaktu berjalan live sampai kuliah dimulai.")
                             }
 
                             NotificationHelper.showScheduleNotification(
                                 context.applicationContext,
                                 schedule.id.toString(),
-                                "🕒 Kuliah yang akan datang ${remainingMinutes} menit lagi",
-                                message
+                                "🕒 Kuliah yang akan datang",
+                                message,
+                                countdownUntilMillis = startAt
                             )
 
-                            // Same notification ID + onlyAlertOnce = silent content update,
-                            // not a new notification/sound every minute.
-                            ReminderScheduler.scheduleCountdownTick(
+                            // No minute-by-minute alarm is needed anymore. Android's
+                            // notification chronometer updates the displayed timer itself.
+                            ReminderScheduler.cancelScheduleCountdown(
                                 context.applicationContext,
                                 scheduleId
                             )
 
                             AppDebugLog.d(
                                 "NOTIFICATION",
-                                "schedule countdown update scheduleId=$scheduleId remainingMinutes=$remainingMinutes"
+                                "schedule chronometer started scheduleId=$scheduleId countdownUntil=$startAt"
                             )
                         }
                     }
