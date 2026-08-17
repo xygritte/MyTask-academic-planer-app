@@ -24,8 +24,10 @@ object ReminderScheduler {
     private const val TASK_DEADLINE_REQUEST_BASE = 6000
     private const val SCHEDULE_REQUEST_BASE = 7000
     private const val SCHEDULE_START_REQUEST_BASE = 8000
+    private const val SCHEDULE_COUNTDOWN_REQUEST_BASE = 9000
     private const val IMMEDIATE_WORK_NAME = "mytask_today_notification"
-    private const val TWO_HOURS_MILLIS = 2 * 60 * 60 * 1000L
+    const val TWO_HOURS_MILLIS = 2 * 60 * 60 * 1000L
+    private const val ONE_MINUTE_MILLIS = 60 * 1000L
 
     fun syncToday(context: Context) {
         AppDebugLog.d("NOTIFICATION", "syncToday enqueue worker")
@@ -72,31 +74,65 @@ object ReminderScheduler {
     fun scheduleScheduleReminder(context: Context, schedule: ScheduleEntity) {
         cancelScheduleReminderAlarms(context, schedule.id)
 
-        val reminderAt = nextScheduleReminderTime(schedule, System.currentTimeMillis())
-        if (reminderAt == null) {
-            AppDebugLog.d("NOTIFICATION", "schedule reminder skipped scheduleId=${schedule.id}")
-            return
+        val nowMillis = System.currentTimeMillis()
+        val occurrence = nextOccurrenceAtOrAfterStart(schedule, nowMillis)
+        val startAt = occurrence.timeInMillis
+        val reminderAt = occurrence.timeInMillis - TWO_HOURS_MILLIS
+
+        // Outside the two-hour window: wait until exactly two hours before start.
+        // Inside the window: fire almost immediately so the live countdown starts now.
+        val triggerAt = when {
+            nowMillis < reminderAt -> reminderAt
+            nowMillis < startAt -> nowMillis + 1_000L
+            else -> {
+                val nextOccurrence = nextOccurrenceAtOrAfterStart(schedule, nowMillis + 1_000L)
+                nextOccurrence.timeInMillis - TWO_HOURS_MILLIS
+            }
+        }
+
+        val actualStartAt = if (nowMillis < startAt) {
+            startAt
+        } else {
+            nextOccurrenceAtOrAfterStart(schedule, nowMillis + 1_000L).timeInMillis
         }
 
         val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
         setScheduleAlarm(
             alarmManager = alarmManager,
-            triggerAt = reminderAt,
+            triggerAt = triggerAt,
             pendingIntent = scheduleReminderPendingIntent(context, schedule.id)
         )
 
-        // A second alarm ends the persistent notification when the class starts.
-        val startAt = nextScheduleStartTime(schedule, System.currentTimeMillis())
+        // Keep a separate alarm for the actual class start so the countdown
+        // notification is removed and the next week's reminder is registered.
         setScheduleAlarm(
             alarmManager = alarmManager,
-            triggerAt = startAt,
+            triggerAt = actualStartAt,
             pendingIntent = scheduleStartPendingIntent(context, schedule.id)
         )
 
         AppDebugLog.d(
             "NOTIFICATION",
-            "schedule reminder window scheduled scheduleId=${schedule.id} reminderAt=$reminderAt startAt=$startAt"
+            "schedule reminder window scheduled scheduleId=${schedule.id} triggerAt=$triggerAt startAt=$actualStartAt"
         )
+    }
+
+    fun scheduleCountdownTick(context: Context, scheduleId: Long, triggerAt: Long = System.currentTimeMillis() + ONE_MINUTE_MILLIS) {
+        val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
+        setScheduleAlarm(
+            alarmManager = alarmManager,
+            triggerAt = triggerAt,
+            pendingIntent = scheduleCountdownPendingIntent(context, scheduleId)
+        )
+        AppDebugLog.d(
+            "NOTIFICATION",
+            "schedule countdown tick scheduled scheduleId=$scheduleId triggerAt=$triggerAt"
+        )
+    }
+
+    fun cancelScheduleCountdown(context: Context, scheduleId: Long) {
+        val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
+        alarmManager.cancel(scheduleCountdownPendingIntent(context, scheduleId))
     }
 
     fun cancelScheduleReminder(context: Context, scheduleId: Long) {
@@ -161,25 +197,11 @@ object ReminderScheduler {
         androidx.work.WorkManager.getInstance(context).cancelUniqueWork(IMMEDIATE_WORK_NAME)
     }
 
-    private fun nextScheduleReminderTime(schedule: ScheduleEntity, nowMillis: Long): Long? {
-        val candidate = nextOccurrence(schedule, nowMillis)
-        var triggerAt = candidate.timeInMillis - TWO_HOURS_MILLIS
-        if (triggerAt <= nowMillis) {
-            candidate.add(Calendar.WEEK_OF_YEAR, 1)
-            triggerAt = candidate.timeInMillis - TWO_HOURS_MILLIS
-        }
-        return triggerAt.takeIf { it > nowMillis }
+    fun currentOrNextScheduleStartTime(schedule: ScheduleEntity, nowMillis: Long = System.currentTimeMillis()): Long {
+        return nextOccurrenceAtOrAfterStart(schedule, nowMillis).timeInMillis
     }
 
-    private fun nextScheduleStartTime(schedule: ScheduleEntity, nowMillis: Long): Long {
-        val candidate = nextOccurrence(schedule, nowMillis)
-        if (candidate.timeInMillis <= nowMillis) {
-            candidate.add(Calendar.WEEK_OF_YEAR, 1)
-        }
-        return candidate.timeInMillis
-    }
-
-    private fun nextOccurrence(schedule: ScheduleEntity, nowMillis: Long): Calendar {
+    private fun nextOccurrenceAtOrAfterStart(schedule: ScheduleEntity, nowMillis: Long): Calendar {
         val now = Calendar.getInstance().apply { timeInMillis = nowMillis }
         return Calendar.getInstance().apply {
             timeInMillis = nowMillis
@@ -188,9 +210,7 @@ object ReminderScheduler {
             set(Calendar.MINUTE, schedule.startMinutes % 60)
             set(Calendar.SECOND, 0)
             set(Calendar.MILLISECOND, 0)
-            if (timeInMillis <= now.timeInMillis) {
-                add(Calendar.WEEK_OF_YEAR, 1)
-            }
+            if (timeInMillis <= now.timeInMillis) add(Calendar.WEEK_OF_YEAR, 1)
         }
     }
 
@@ -215,6 +235,9 @@ object ReminderScheduler {
     private fun scheduleStartRequestCode(scheduleId: Long): Int =
         SCHEDULE_START_REQUEST_BASE + (scheduleId.hashCode() and 0x7fffffff) % 100000
 
+    private fun scheduleCountdownRequestCode(scheduleId: Long): Int =
+        SCHEDULE_COUNTDOWN_REQUEST_BASE + (scheduleId.hashCode() and 0x7fffffff) % 100000
+
     private fun taskDeadlinePendingIntent(context: Context, taskId: Long): PendingIntent {
         val intent = Intent(context, DeadlineReceiver::class.java).apply {
             putExtra(DeadlineReceiver.EXTRA_TASK_ID, taskId)
@@ -231,6 +254,7 @@ object ReminderScheduler {
         val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
         alarmManager.cancel(scheduleReminderPendingIntent(context, scheduleId))
         alarmManager.cancel(scheduleStartPendingIntent(context, scheduleId))
+        alarmManager.cancel(scheduleCountdownPendingIntent(context, scheduleId))
     }
 
     private fun scheduleReminderPendingIntent(context: Context, scheduleId: Long): PendingIntent {
@@ -254,6 +278,19 @@ object ReminderScheduler {
         return PendingIntent.getBroadcast(
             context,
             scheduleStartRequestCode(scheduleId),
+            intent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+    }
+
+    private fun scheduleCountdownPendingIntent(context: Context, scheduleId: Long): PendingIntent {
+        val intent = Intent(context, ScheduleNotificationReceiver::class.java).apply {
+            action = ScheduleNotificationReceiver.ACTION_SCHEDULE_COUNTDOWN
+            putExtra(ScheduleNotificationReceiver.EXTRA_SCHEDULE_ID, scheduleId)
+        }
+        return PendingIntent.getBroadcast(
+            context,
+            scheduleCountdownRequestCode(scheduleId),
             intent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
