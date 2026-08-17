@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import com.mytask.debug.AuthDebugLog
@@ -28,75 +29,46 @@ class UserProfileRepository @Inject constructor(
 ) {
 
     companion object {
-        private val UID_KEY =
-            stringPreferencesKey("student_uid")
-
-        private val NAME_KEY =
-            stringPreferencesKey("student_name")
-
-        private val PROGRAM_KEY =
-            stringPreferencesKey("student_program")
-
-        private val PROFILE_PHOTO_URI_KEY =
-            stringPreferencesKey("profile_photo_uri")
-
-        private val RESTORE_PENDING_KEY =
-            booleanPreferencesKey("restore_cloud_data_pending")
+        private val UID_KEY = stringPreferencesKey("student_uid")
+        private val NAME_KEY = stringPreferencesKey("student_name")
+        private val PROGRAM_KEY = stringPreferencesKey("student_program")
+        private val PROFILE_PHOTO_URI_KEY = stringPreferencesKey("profile_photo_uri")
+        private val RESTORE_PENDING_KEY = booleanPreferencesKey("restore_cloud_data_pending")
+        private val LAST_CLOUD_UPDATED_AT_KEY = longPreferencesKey("last_cloud_updated_at")
+        private val LAST_CLOUD_DATA_HASH_KEY = stringPreferencesKey("last_cloud_data_hash")
     }
 
     val profile: Flow<UserProfile?> =
         context.userProfileDataStore.data.map { preferences: Preferences ->
-            val name = preferences[NAME_KEY]
-                ?.trim()
-                .orEmpty()
-
-            val program = preferences[PROGRAM_KEY]
-                ?.trim()
-                .orEmpty()
-
-            if (name.isBlank() || program.isBlank()) {
-                null
-            } else {
-                UserProfile(
-                    name = name,
-                    program = program
-                )
-            }
+            val name = preferences[NAME_KEY]?.trim().orEmpty()
+            val program = preferences[PROGRAM_KEY]?.trim().orEmpty()
+            if (name.isBlank() || program.isBlank()) null
+            else UserProfile(name = name, program = program)
         }
 
     val uid: Flow<String?> =
         context.userProfileDataStore.data.map { preferences ->
-            preferences[UID_KEY]
-                ?.trim()
-                ?.takeIf { it.isNotBlank() }
+            preferences[UID_KEY]?.trim()?.takeIf { it.isNotBlank() }
         }
 
     val profilePhotoUri: Flow<String?> =
         context.userProfileDataStore.data.map { preferences ->
-            preferences[PROFILE_PHOTO_URI_KEY]
-                ?.trim()
-                ?.takeIf { it.isNotBlank() }
+            preferences[PROFILE_PHOTO_URI_KEY]?.trim()?.takeIf { it.isNotBlank() }
         }
 
-    /**
-     * Always emits the current persisted restore flag.
-     *
-     * This must NOT filter out false values because MainActivity reads the
-     * value with first(). Filtering false would make first() wait forever on
-     * a normal app reopen after a previous restore had already completed.
-     *
-     * Restore is still triggered only once for a new authenticated session:
-     * MainActivity is keyed by Firebase UID, not by this flag.
-     */
     val restorePending: Flow<Boolean> =
         context.userProfileDataStore.data
             .map { preferences -> preferences[RESTORE_PENDING_KEY] ?: false }
 
-    suspend fun saveProfile(
-        uid: String,
-        name: String,
-        program: String
-    ) {
+    val lastCloudUpdatedAt: Flow<Long> =
+        context.userProfileDataStore.data
+            .map { preferences -> preferences[LAST_CLOUD_UPDATED_AT_KEY] ?: 0L }
+
+    val lastCloudDataHash: Flow<String?> =
+        context.userProfileDataStore.data
+            .map { preferences -> preferences[LAST_CLOUD_DATA_HASH_KEY] }
+
+    suspend fun saveProfile(uid: String, name: String, program: String) {
         context.userProfileDataStore.edit { preferences ->
             preferences[UID_KEY] = uid.trim()
             preferences[NAME_KEY] = name.trim()
@@ -107,11 +79,7 @@ class UserProfileRepository @Inject constructor(
         )
     }
 
-    suspend fun saveAuthenticatedSession(
-        uid: String,
-        name: String,
-        program: String
-    ) {
+    suspend fun saveAuthenticatedSession(uid: String, name: String, program: String) {
         context.userProfileDataStore.edit { preferences ->
             preferences[UID_KEY] = uid.trim()
             preferences[NAME_KEY] = name.trim()
@@ -123,15 +91,8 @@ class UserProfileRepository @Inject constructor(
         )
     }
 
-    suspend fun saveGuestProfile(
-        name: String,
-        program: String
-    ) {
-        saveProfile(
-            uid = "guest",
-            name = name,
-            program = program
-        )
+    suspend fun saveGuestProfile(name: String, program: String) {
+        saveProfile(uid = "guest", name = name, program = program)
         AuthDebugLog.d("PROFILE_STORE guest profile saved")
     }
 
@@ -141,13 +102,9 @@ class UserProfileRepository @Inject constructor(
             uri.startsWith("file://") -> "$uri?v=${System.currentTimeMillis()}"
             else -> uri
         }
-
         context.userProfileDataStore.edit { preferences ->
-            if (storedUri == null) {
-                preferences.remove(PROFILE_PHOTO_URI_KEY)
-            } else {
-                preferences[PROFILE_PHOTO_URI_KEY] = storedUri
-            }
+            if (storedUri == null) preferences.remove(PROFILE_PHOTO_URI_KEY)
+            else preferences[PROFILE_PHOTO_URI_KEY] = storedUri
         }
         AuthDebugLog.d(
             "PROFILE_STORE profile photo ${if (storedUri == null) "cleared" else "saved"}"
@@ -168,6 +125,22 @@ class UserProfileRepository @Inject constructor(
         AuthDebugLog.d("PROFILE_STORE restorePending=false")
     }
 
+    suspend fun saveCloudSyncState(updatedAt: Long, dataHash: String) {
+        context.userProfileDataStore.edit { preferences ->
+            preferences[LAST_CLOUD_UPDATED_AT_KEY] = updatedAt
+            preferences[LAST_CLOUD_DATA_HASH_KEY] = dataHash
+        }
+        AuthDebugLog.d("PROFILE_STORE cloud sync state saved: updatedAt=$updatedAt")
+    }
+
+    suspend fun clearCloudSyncState() {
+        context.userProfileDataStore.edit { preferences ->
+            preferences.remove(LAST_CLOUD_UPDATED_AT_KEY)
+            preferences.remove(LAST_CLOUD_DATA_HASH_KEY)
+        }
+        AuthDebugLog.d("PROFILE_STORE cloud sync state cleared")
+    }
+
     suspend fun clearProfile() {
         context.userProfileDataStore.edit { preferences ->
             preferences.remove(UID_KEY)
@@ -175,6 +148,8 @@ class UserProfileRepository @Inject constructor(
             preferences.remove(PROGRAM_KEY)
             preferences.remove(PROFILE_PHOTO_URI_KEY)
             preferences.remove(RESTORE_PENDING_KEY)
+            preferences.remove(LAST_CLOUD_UPDATED_AT_KEY)
+            preferences.remove(LAST_CLOUD_DATA_HASH_KEY)
         }
         AuthDebugLog.d("PROFILE_STORE clearProfile")
     }
