@@ -2,7 +2,6 @@ package com.mytask.data.repository
 
 import android.content.Context
 import androidx.room.withTransaction
-import com.google.firebase.auth.FirebaseAuth
 import com.mytask.Notification.ReminderScheduler
 import com.mytask.data.local.MyTaskDatabase
 import com.mytask.data.local.ScheduleTimeRange
@@ -30,50 +29,39 @@ class TemplateApplyRepository @Inject constructor(
 ) {
 
     suspend fun apply(template: AppTemplate): TemplateApplyResult {
-        FirebaseAuth.getInstance().currentUser?.uid ?: "guest"
-
         val root = catalog.readJson(template)
         var result = TemplateApplyResult(false, 0, 0)
 
         database.withTransaction {
-            val existingCourses = database.courseDao().getAllCoursesSnapshot()
-            val courseIdsByName = existingCourses.associate { it.name to it.id }.toMutableMap()
-            val templateCourseNames = mutableMapOf<Long, String>()
-
+            val templateCourseIds = mutableMapOf<Long, Long>()
             val courseArray = root.optJSONArray("courses") ?: JSONArray()
             var addedCourses = 0
+
             for (index in 0 until courseArray.length()) {
                 val item = courseArray.getJSONObject(index)
                 val templateId = item.optLong("id", index.toLong())
                 val name = item.optString("name").trim()
                 require(name.isNotBlank()) { "Template memiliki mata kuliah tanpa nama." }
-                templateCourseNames[templateId] = name
 
-                if (!courseIdsByName.containsKey(name)) {
-                    database.courseDao().insert(
-                        CourseEntity(
-                            name = name,
-                            code = item.optString("code"),
-                            lecturer = item.optString("lecturer"),
-                            room = item.optString("room")
-                        )
+                val actualCourseId = database.courseDao().insert(
+                    CourseEntity(
+                        name = name,
+                        code = item.optString("code"),
+                        lecturer = item.optString("lecturer"),
+                        room = item.optString("room")
                     )
-                    addedCourses++
-                }
+                )
+                templateCourseIds[templateId] = actualCourseId
+                addedCourses++
             }
-
-            courseIdsByName.clear()
-            courseIdsByName.putAll(
-                database.courseDao().getAllCoursesSnapshot().associate { it.name to it.id }
-            )
 
             val scheduleArray = root.optJSONArray("schedules") ?: JSONArray()
             val schedules = mutableListOf<ScheduleEntity>()
+
             for (index in 0 until scheduleArray.length()) {
                 val item = scheduleArray.getJSONObject(index)
                 val templateCourseId = item.optLong("courseId", Long.MIN_VALUE)
-                val courseName = templateCourseNames[templateCourseId]
-                val actualCourseId = courseName?.let { courseIdsByName[it] }
+                val actualCourseId = templateCourseIds[templateCourseId]
 
                 val ranges = when {
                     item.has("timeRanges") -> when (val value = item.get("timeRanges")) {
@@ -94,6 +82,7 @@ class TemplateApplyRepository @Inject constructor(
                     ?: legacyStart.toMinuteOfDayOrNull() ?: -1
                 val endMinutes = item.optInt("endMinutes", -1).takeIf { it >= 0 }
                     ?: legacyEnd.toMinuteOfDayOrNull() ?: -1
+
                 val sortedRanges = if (ranges.isNotEmpty()) {
                     ranges.sortedBy { it.startMinutes }
                 } else if (startMinutes in 0..1439 && endMinutes in 0..1439 && endMinutes > startMinutes) {
@@ -101,6 +90,7 @@ class TemplateApplyRepository @Inject constructor(
                 } else {
                     emptyList()
                 }
+
                 require(sortedRanges.isNotEmpty()) { "Template memiliki jadwal dengan waktu tidak valid." }
                 for (rangeIndex in 0 until sortedRanges.lastIndex) {
                     require(sortedRanges[rangeIndex + 1].startMinutes >= sortedRanges[rangeIndex].endMinutes) {
@@ -118,7 +108,10 @@ class TemplateApplyRepository @Inject constructor(
                     timeRangesJson = sortedRanges.toJsonString()
                 )
             }
-            if (schedules.isNotEmpty()) database.scheduleDao().insertAll(schedules)
+
+            if (schedules.isNotEmpty()) {
+                database.scheduleDao().insertAll(schedules)
+            }
 
             result = TemplateApplyResult(false, addedCourses, schedules.size)
         }
