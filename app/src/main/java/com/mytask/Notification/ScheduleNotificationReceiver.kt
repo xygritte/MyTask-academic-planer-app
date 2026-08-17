@@ -6,6 +6,7 @@ import android.content.Intent
 import androidx.room.Room
 import com.mytask.data.local.MyTaskDatabase
 import com.mytask.data.local.toDisplayTime
+import com.mytask.data.repository.SettingsRepository
 import com.mytask.debug.AppDebugLog
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -42,6 +43,9 @@ class ScheduleNotificationReceiver : BroadcastReceiver() {
                         return@launch
                     }
 
+                    val settingsRepository = SettingsRepository(context.applicationContext)
+                    val notificationsEnabled = settingsRepository.scheduleNotificationEnabled(scheduleId).first()
+
                     when (intent.action) {
                         ACTION_SCHEDULE_START -> {
                             NotificationHelper.cancelScheduleNotification(
@@ -54,12 +58,25 @@ class ScheduleNotificationReceiver : BroadcastReceiver() {
                             )
                             AppDebugLog.d(
                                 "NOTIFICATION",
-                                "schedule started; chronometer notification cleared scheduleId=$scheduleId"
+                                "schedule started; notification cleared scheduleId=$scheduleId enabled=$notificationsEnabled"
                             )
                         }
 
                         ACTION_SCHEDULE_ALARM,
                         ACTION_SCHEDULE_COUNTDOWN -> {
+                            if (!notificationsEnabled) {
+                                NotificationHelper.cancelScheduleNotification(
+                                    context.applicationContext,
+                                    scheduleId.toString()
+                                )
+                                ReminderScheduler.cancelScheduleCountdown(context.applicationContext, scheduleId)
+                                AppDebugLog.d(
+                                    "NOTIFICATION",
+                                    "schedule notification disabled scheduleId=$scheduleId"
+                                )
+                                return@launch
+                            }
+
                             val startAt = ReminderScheduler.currentOrNextScheduleStartTime(schedule)
                             val remainingMillis = startAt - System.currentTimeMillis()
                             if (remainingMillis <= 0L) {
@@ -97,8 +114,6 @@ class ScheduleNotificationReceiver : BroadcastReceiver() {
                                 countdownUntilMillis = startAt
                             )
 
-                            // No minute-by-minute alarm is needed anymore. Android's
-                            // notification chronometer updates the displayed timer itself.
                             ReminderScheduler.cancelScheduleCountdown(
                                 context.applicationContext,
                                 scheduleId
