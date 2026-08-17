@@ -3,7 +3,6 @@ package com.mytask.Notification
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
-import androidx.room.Room
 import com.mytask.data.local.MyTaskDatabase
 import com.mytask.data.local.getTimeRanges
 import com.mytask.data.local.toDisplayTime
@@ -33,11 +32,7 @@ class ScheduleNotificationReceiver : BroadcastReceiver() {
                 val scheduleId = intent.getLongExtra(EXTRA_SCHEDULE_ID, -1L)
                 if (scheduleId <= 0L) return@launch
 
-                val database = Room.databaseBuilder(
-                    context.applicationContext,
-                    MyTaskDatabase::class.java,
-                    "mytask_db"
-                ).build()
+                val database = MyTaskDatabase.builder(context.applicationContext).build()
 
                 try {
                     val schedule = database.scheduleDao().getScheduleById(scheduleId).first()
