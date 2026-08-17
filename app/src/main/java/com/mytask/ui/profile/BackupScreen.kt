@@ -4,7 +4,6 @@ package com.mytask.ui.profile
 
 import android.content.Intent
 import android.net.Uri
-import android.provider.OpenableColumns
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -12,11 +11,11 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -49,6 +48,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -65,8 +65,9 @@ import coil.compose.AsyncImage
 import com.mytask.data.repository.AppTemplate
 import com.mytask.data.repository.TemplateApplyResult
 import com.mytask.data.repository.UserDataFile
-import java.text.DecimalFormat
+import java.text.SimpleDateFormat
 import java.util.Date
+import java.util.Locale
 
 @Composable
 fun BackupScreen(
@@ -74,7 +75,7 @@ fun BackupScreen(
     viewModel: BackupViewModel = hiltViewModel()
 ) {
     val context = LocalContext.current
-    val files by viewModel.files.collectAsStateWithLifecycle()
+    val files by viewModel.files.collectAsState(initial = emptyList())
     var pendingJson by remember { mutableStateOf<String?>(null) }
     var showImportConfirm by remember { mutableStateOf(false) }
     var selectedTemplate by remember { mutableStateOf<AppTemplate?>(null) }
@@ -191,7 +192,7 @@ fun BackupScreen(
                         }
                     }
                     Text(
-                        "Data yang sudah ada tidak akan dihapus. Template ditambahkan sebagai data baru dan notification schedule akan disinkronkan.",
+                        "Data yang sudah ada tidak akan dihapus. Template ditambahkan sebagai data baru dan notifikasi jadwal akan disinkronkan.",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -244,7 +245,7 @@ fun BackupScreen(
     ) { paddingValues ->
         androidx.compose.foundation.lazy.LazyColumn(
             modifier = Modifier.fillMaxSize().padding(paddingValues),
-            contentPadding = androidx.compose.foundation.layout.PaddingValues(16.dp),
+            contentPadding = PaddingValues(16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
             item {
@@ -258,9 +259,7 @@ fun BackupScreen(
                 }
             }
 
-            item {
-                Text("✨ Template Bawaan", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-            }
+            item { Text("✨ Template Bawaan", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold) }
 
             item {
                 Row(
@@ -273,9 +272,7 @@ fun BackupScreen(
                 }
             }
 
-            item {
-                Text("📦 Backup Data", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-            }
+            item { Text("📦 Backup Data", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold) }
 
             item {
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -303,7 +300,7 @@ fun BackupScreen(
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Column {
+                    Column(modifier = Modifier.weight(1f)) {
                         Text("📁 File Data Saya", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
                         Text(
                             "Referensi file yang pernah kamu pilih atau ekspor dari MyTask.",
@@ -333,11 +330,12 @@ fun BackupScreen(
                 }
             } else {
                 items(files.size, key = { files[it].uri }) { index ->
+                    val file = files[index]
                     UserFileCard(
-                        file = files[index],
+                        file = file,
                         onOpen = {
                             val intent = Intent(Intent.ACTION_VIEW).apply {
-                                setDataAndType(Uri.parse(files[index].uri), files[index].mimeType)
+                                setDataAndType(Uri.parse(file.uri), file.mimeType)
                                 addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
                             }
                             runCatching { context.startActivity(intent) }
@@ -345,13 +343,13 @@ fun BackupScreen(
                         },
                         onShare = {
                             val intent = Intent(Intent.ACTION_SEND).apply {
-                                type = files[index].mimeType
-                                putExtra(Intent.EXTRA_STREAM, Uri.parse(files[index].uri))
+                                type = file.mimeType
+                                putExtra(Intent.EXTRA_STREAM, Uri.parse(file.uri))
                                 addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
                             }
                             runCatching { context.startActivity(Intent.createChooser(intent, "Bagikan file")) }
                         },
-                        onDelete = { viewModel.removeFile(files[index].uri) }
+                        onDelete = { viewModel.removeFile(file.uri) }
                     )
                 }
             }
@@ -360,10 +358,7 @@ fun BackupScreen(
 }
 
 @Composable
-private fun TemplateCard(
-    state: TemplateCardState,
-    onClick: () -> Unit
-) {
+private fun TemplateCard(state: TemplateCardState, onClick: () -> Unit) {
     Card(
         onClick = onClick,
         modifier = Modifier.width(260.dp),
@@ -385,12 +380,7 @@ private fun TemplateCard(
 }
 
 @Composable
-private fun UserFileCard(
-    file: UserDataFile,
-    onOpen: () -> Unit,
-    onShare: () -> Unit,
-    onDelete: () -> Unit
-) {
+private fun UserFileCard(file: UserDataFile, onOpen: () -> Unit, onShare: () -> Unit, onDelete: () -> Unit) {
     var menuOpen by remember { mutableStateOf(false) }
     val isImage = file.mimeType.startsWith("image/")
 
@@ -449,22 +439,11 @@ private fun UserFileCard(
     }
 }
 
-private fun formatBytes(bytes: Long): String {
-    if (bytes <= 0) return "Ukuran tidak diketahui"
-    val units = listOf("B", "KB", "MB", "GB")
-    var value = bytes.toDouble()
-    var index = 0
-    while (value >= 1024 && index < units.lastIndex) {
-        value /= 1024
-        index++
-    }
-    return "${DecimalFormat("0.#").format(value)} ${units[index]}"
+private fun formatBytes(bytes: Long): String = when {
+    bytes < 1024L -> "$bytes B"
+    bytes < 1024L * 1024L -> "${bytes / 1024} KB"
+    else -> String.format(Locale.getDefault(), "%.1f MB", bytes.toDouble() / (1024.0 * 1024.0))
 }
 
-private fun formatDate(millis: Long): String = runCatching {
-    java.text.SimpleDateFormat("dd MMM yyyy", java.util.Locale("id", "ID")).format(Date(millis))
-}.getOrDefault("Tanggal tidak diketahui")
-
-@Composable
-private fun <T> Flow<T>.collectAsStateWithLifecycle(): androidx.compose.runtime.State<T> =
-    androidx.lifecycle.compose.collectAsStateWithLifecycle(this)
+private fun formatDate(millis: Long): String =
+    SimpleDateFormat("dd MMM yyyy", Locale("id", "ID")).format(Date(millis))
