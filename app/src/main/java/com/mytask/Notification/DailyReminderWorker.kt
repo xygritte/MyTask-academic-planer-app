@@ -41,7 +41,7 @@ class DailyReminderWorker(
 
             checkDeadlineTasks(tasks, reminderDays)
             ReminderScheduler.rescheduleAllTaskDeadlines(applicationContext, tasks)
-            checkScheduleNotificationWindow(database, schedules)
+            checkScheduleNotificationWindow(database, schedules, settingsRepository)
             ReminderScheduler.rescheduleAllScheduleReminders(applicationContext, schedules)
             ReminderScheduler.scheduleNextMidnight(applicationContext)
 
@@ -58,7 +58,8 @@ class DailyReminderWorker(
 
     private suspend fun checkScheduleNotificationWindow(
         database: MyTaskDatabase,
-        schedules: List<ScheduleEntity>
+        schedules: List<ScheduleEntity>,
+        settingsRepository: SettingsRepository
     ) {
         if (schedules.isEmpty()) return
 
@@ -71,6 +72,12 @@ class DailyReminderWorker(
         schedules
             .filter { it.dayOfWeek == today }
             .forEach { schedule ->
+                if (!settingsRepository.scheduleNotificationEnabled(schedule.id).first()) {
+                    NotificationHelper.cancelScheduleNotification(applicationContext, schedule.id.toString())
+                    ReminderScheduler.cancelScheduleCountdown(applicationContext, schedule.id)
+                    return@forEach
+                }
+
                 val start = Calendar.getInstance().apply {
                     set(Calendar.HOUR_OF_DAY, schedule.startMinutes / 60)
                     set(Calendar.MINUTE, schedule.startMinutes % 60)
@@ -81,15 +88,9 @@ class DailyReminderWorker(
                 val withinTwoHourWindow = nowMillis >= startMillis - twoHoursMillis && nowMillis < startMillis
                 if (!withinTwoHourWindow) return@forEach
 
-                val course = schedule.courseId?.let { courseId ->
-                    courses.find { course -> course.id == courseId }
-                }
-
+                val course = schedule.courseId?.let { courseId -> courses.find { course -> course.id == courseId } }
                 val message = buildString {
-                    append(schedule.startMinutes.toDisplayTime())
-                        .append(" - ")
-                        .append(schedule.endMinutes.toDisplayTime())
-                        .append("\n")
+                    append(schedule.startMinutes.toDisplayTime()).append(" - ").append(schedule.endMinutes.toDisplayTime()).append("\n")
                     append(course?.name ?: "Mata Kuliah")
                     if (schedule.room.isNotBlank()) append("\nRuangan: ").append(schedule.room)
                     append("\n\nWaktu berjalan live sampai kuliah dimulai.")
@@ -102,9 +103,6 @@ class DailyReminderWorker(
                     message,
                     countdownUntilMillis = startMillis
                 )
-
-                // The notification's native chronometer updates the countdown locally.
-                // No per-minute alarm is scheduled and no repeated notification sound is generated.
                 ReminderScheduler.cancelScheduleCountdown(applicationContext, schedule.id)
 
                 AppDebugLog.d(
