@@ -23,6 +23,8 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
+import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -136,6 +138,7 @@ private fun MyTaskApp(
     var isSavingOnline by remember { mutableStateOf(false) }
     var onlineSaveMessage by remember { mutableStateOf<String?>(null) }
     var shouldShowTemplatePrompt by remember { mutableStateOf(false) }
+    var isRefreshingConnectivity by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
 
     LaunchedEffect(Unit) {
@@ -271,6 +274,17 @@ private fun MyTaskApp(
                         }
                     }
                 },
+                onRefreshNetwork = {
+                    if (!isRefreshingConnectivity) {
+                        scope.launch {
+                            isRefreshingConnectivity = true
+                            networkRefreshKey += 1
+                            delay(550)
+                            isRefreshingConnectivity = false
+                        }
+                    }
+                },
+                isRefreshingConnectivity = isRefreshingConnectivity,
                 onLoggedOut = {
                     sessionProfile = null
                     sessionUid = null
@@ -355,10 +369,21 @@ private fun MyTaskApp(
         MyTaskMainContent(
             profile = currentLocalProfile,
             canSaveOnline = false,
-            isSavingOnline = !networkAvailable,
+            isSavingOnline = false,
             onlineSaveMessage = null,
             authRepository = authRepository,
             onSaveDataOnline = {},
+            onRefreshNetwork = {
+                if (!isRefreshingConnectivity) {
+                    scope.launch {
+                        isRefreshingConnectivity = true
+                        networkRefreshKey += 1
+                        delay(550)
+                        isRefreshingConnectivity = false
+                    }
+                }
+            },
+            isRefreshingConnectivity = isRefreshingConnectivity,
             onLoggedOut = {
                 sessionProfile = null
                 sessionUid = null
@@ -395,6 +420,8 @@ private fun MyTaskMainContent(
     onlineSaveMessage: String?,
     authRepository: FirebaseAuthRepository,
     onSaveDataOnline: () -> Unit,
+    onRefreshNetwork: () -> Unit,
+    isRefreshingConnectivity: Boolean,
     onLoggedOut: () -> Unit,
     onLogout: () -> Unit
 ) {
@@ -440,6 +467,8 @@ private fun MyTaskMainContent(
         }
     }
 
+    val pullRefreshState = rememberPullToRefreshState()
+
     Scaffold(
         bottomBar = {
             if (!isSubScreen) {
@@ -454,53 +483,60 @@ private fun MyTaskMainContent(
             }
         }
     ) { paddingValues ->
-        Box(Modifier.fillMaxSize()) {
-            NavGraph(
-                navController = navController,
-                paddingValues = paddingValues,
-                modifier = Modifier.fillMaxSize().zIndex(if (isSubScreen) 10f else 0f)
-            )
+        PullToRefreshBox(
+            state = pullRefreshState,
+            isRefreshing = isRefreshingConnectivity,
+            onRefresh = onRefreshNetwork,
+            modifier = Modifier.fillMaxSize()
+        ) {
+            Box(Modifier.fillMaxSize()) {
+                NavGraph(
+                    navController = navController,
+                    paddingValues = paddingValues,
+                    modifier = Modifier.fillMaxSize().zIndex(if (isSubScreen) 10f else 0f)
+                )
 
-            if (!isSubScreen) {
-                HorizontalPager(
-                    state = pagerState,
-                    userScrollEnabled = hasCourses,
-                    modifier = Modifier.fillMaxSize().padding(paddingValues).zIndex(1f),
-                    beyondViewportPageCount = 1
-                ) { page ->
-                    when (page) {
-                        0 -> DashboardScreen(
-                            onCoursesClick = { scope.launch { pagerState.animateScrollToPage(4) } },
-                            onTasksClick = ::openTasks,
-                            onScheduleClick = ::openSchedule,
-                            onCalendarClick = { scope.launch { pagerState.animateScrollToPage(3) } },
-                            onAddDataClick = ::openAddDataDialog
-                        )
-                        1 -> TaskListScreen(
-                            onAddTask = ::openAddDataDialog,
-                            onEditTask = { id ->
-                                if (hasCourses) navController.navigate("add_task?taskId=$id")
-                                else openAddDataDialog()
-                            }
-                        )
-                        2 -> ScheduleScreen(addRequestKey = scheduleAddRequestKey, onAddData = ::openAddDataDialog)
-                        3 -> CalendarScreen(onBack = { scope.launch { if (currentPage > 0) pagerState.animateScrollToPage(currentPage - 1) } })
-                        4 -> CourseListScreen(
-                            onAddCourse = ::openAddDataDialog,
-                            onEditCourse = { id -> navController.navigate("add_course?courseId=$id") }
-                        )
-                        5 -> ProfileScreen(
-                            profile = profile,
-                            canSaveOnline = canSaveOnline,
-                            isSavingOnline = isSavingOnline,
-                            onlineSaveMessage = onlineSaveMessage,
-                            onBack = { scope.launch { if (currentPage > 0) pagerState.animateScrollToPage(currentPage - 1) } },
-                            onNotificationSettings = { navController.navigate(Screen.NotificationSettings.route) },
-                            onBackupData = { navController.navigate(Screen.Backup.route) },
-                            onEditProfile = {},
-                            onSaveDataOnline = onSaveDataOnline,
-                            onLogout = onLogout
-                        )
+                if (!isSubScreen) {
+                    HorizontalPager(
+                        state = pagerState,
+                        userScrollEnabled = hasCourses,
+                        modifier = Modifier.fillMaxSize().padding(paddingValues).zIndex(1f),
+                        beyondViewportPageCount = 1
+                    ) { page ->
+                        when (page) {
+                            0 -> DashboardScreen(
+                                onCoursesClick = { scope.launch { pagerState.animateScrollToPage(4) } },
+                                onTasksClick = ::openTasks,
+                                onScheduleClick = ::openSchedule,
+                                onCalendarClick = { scope.launch { pagerState.animateScrollToPage(3) } },
+                                onAddDataClick = ::openAddDataDialog
+                            )
+                            1 -> TaskListScreen(
+                                onAddTask = ::openAddDataDialog,
+                                onEditTask = { id ->
+                                    if (hasCourses) navController.navigate("add_task?taskId=$id")
+                                    else openAddDataDialog()
+                                }
+                            )
+                            2 -> ScheduleScreen(addRequestKey = scheduleAddRequestKey, onAddData = ::openAddDataDialog)
+                            3 -> CalendarScreen(onBack = { scope.launch { if (currentPage > 0) pagerState.animateScrollToPage(currentPage - 1) } })
+                            4 -> CourseListScreen(
+                                onAddCourse = ::openAddDataDialog,
+                                onEditCourse = { id -> navController.navigate("add_course?courseId=$id") }
+                            )
+                            5 -> ProfileScreen(
+                                profile = profile,
+                                canSaveOnline = canSaveOnline,
+                                isSavingOnline = isSavingOnline,
+                                onlineSaveMessage = onlineSaveMessage,
+                                onBack = { scope.launch { if (currentPage > 0) pagerState.animateScrollToPage(currentPage - 1) } },
+                                onNotificationSettings = { navController.navigate(Screen.NotificationSettings.route) },
+                                onBackupData = { navController.navigate(Screen.Backup.route) },
+                                onEditProfile = {},
+                                onSaveDataOnline = onSaveDataOnline,
+                                onLogout = onLogout
+                            )
+                        }
                     }
                 }
             }
