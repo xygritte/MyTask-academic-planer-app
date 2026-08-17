@@ -24,7 +24,7 @@ interface CourseDao {
     fun getCourseCount(): Flow<Int>
 
     @Insert
-    suspend fun insert(course: CourseEntity)
+    suspend fun insert(course: CourseEntity): Long
 
     @Insert
     suspend fun insertAll(courses: List<CourseEntity>)
