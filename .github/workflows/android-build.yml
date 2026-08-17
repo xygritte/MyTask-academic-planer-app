@@ -73,6 +73,8 @@ jobs:
             git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
             git add app/src/main/java/com/mytask/MainActivity.kt
             git commit -m "Fix logout transition after successful sign out"
+            git fetch origin main
+            git rebase origin/main
             git push
           fi
 
@@ -203,7 +205,18 @@ jobs:
             git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
             git add app/src/main/java/com/mytask/ui/schedule/ScheduleScreen.kt
             git commit -m "fix(ui): make schedule time picker callback non-composable"
-            git push
+            for attempt in 1 2 3 4 5; do
+              git fetch origin main
+              git rebase origin/main || exit 1
+              if git push; then
+                break
+              fi
+              if [ "$attempt" -eq 5 ]; then
+                echo "Failed to push schedule callback patch after 5 attempts."
+                exit 1
+              fi
+              sleep 2
+            done
           fi
 
       - name: Set up JDK 17
