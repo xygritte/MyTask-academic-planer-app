@@ -42,9 +42,7 @@ object ScheduleRangeResolver {
 
         val next = ranges.mapIndexedNotNull { index, range ->
             nextOccurrenceStart(schedule, range.startMinutes, nowMillis)?.let { start ->
-                val end = atMinutes(start, range.endMinutes).let { candidate ->
-                    if (candidate <= start) candidate + DAY_MILLIS else candidate
-                }
+                val end = atMinutes(start, range.endMinutes)
                 ResolvedRange(index, range, State.NEXT, start, end)
             }
         }.minByOrNull { it.startAt }
@@ -94,15 +92,6 @@ object ScheduleRangeResolver {
             set(Calendar.MILLISECOND, 0)
         }.timeInMillis
 
-    private fun atMinutes(baseDay: Long, minutes: Int): Long =
-        Calendar.getInstance().apply {
-            timeInMillis = baseDay
-            set(Calendar.HOUR_OF_DAY, minutes / 60)
-            set(Calendar.MINUTE, minutes % 60)
-            set(Calendar.SECOND, 0)
-            set(Calendar.MILLISECOND, 0)
-        }.timeInMillis
-
     private fun atMinutes(baseMillis: Long, minutes: Int): Long =
         Calendar.getInstance().apply {
             timeInMillis = baseMillis
@@ -113,5 +102,4 @@ object ScheduleRangeResolver {
         }.timeInMillis
 
     private const val EVERY_DAY = 0
-    private const val DAY_MILLIS = 24 * 60 * 60 * 1000L
 }
