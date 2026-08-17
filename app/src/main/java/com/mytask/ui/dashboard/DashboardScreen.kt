@@ -114,9 +114,7 @@ fun DashboardScreen(
             verticalArrangement = Arrangement.spacedBy(20.dp)
         ) {
             item { WelcomeHeader() }
-            item {
-                TodaySummaryCard(scheduleCount = todaySchedules.size, activeTaskCount = activeTaskCount, onClick = onTasksClick)
-            }
+            item { TodaySummaryCard(scheduleCount = todaySchedules.size, activeTaskCount = activeTaskCount, onClick = onTasksClick) }
             item { SectionHeader(title = "Overview", action = "Lihat semua", onClick = onCoursesClick) }
             item {
                 Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -253,11 +251,12 @@ private fun TodayScheduleCard(
             Column(Modifier.padding(vertical = 8.dp)) {
                 schedules.forEachIndexed { index, schedule ->
                     val course = courses.find { it.id == schedule.courseId }
+                    val notificationsDisabled = schedule.id in disabledScheduleNotificationIds
                     TodayScheduleRow(
                         schedule = schedule,
                         courseName = course?.name ?: "Mata Kuliah",
-                        notificationsEnabled = schedule.id !in disabledScheduleNotificationIds,
-                        onNotificationToggle = { enabled -> onNotificationToggle(schedule, enabled) },
+                        notificationsDisabled = notificationsDisabled,
+                        onNotificationToggle = { checked -> onNotificationToggle(schedule, !checked) },
                         onClick = onClick
                     )
                     if (index < schedules.lastIndex) {
@@ -273,7 +272,7 @@ private fun TodayScheduleCard(
 private fun TodayScheduleRow(
     schedule: ScheduleEntity,
     courseName: String,
-    notificationsEnabled: Boolean,
+    notificationsDisabled: Boolean,
     onNotificationToggle: (Boolean) -> Unit,
     onClick: () -> Unit
 ) {
@@ -287,7 +286,7 @@ private fun TodayScheduleRow(
                 Text(formatScheduleTime(schedule.endMinutes), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             Spacer(Modifier.width(14.dp))
-            Surface(Modifier.size(8.dp), CircleShape, color = if (notificationsEnabled) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline) {}
+            Surface(Modifier.size(8.dp), CircleShape, color = if (notificationsDisabled) MaterialTheme.colorScheme.outline else MaterialTheme.colorScheme.primary) {}
             Spacer(Modifier.width(14.dp))
             Column(Modifier.weight(1f)) {
                 Text(courseName, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
@@ -297,7 +296,7 @@ private fun TodayScheduleRow(
             }
         }
         Checkbox(
-            checked = notificationsEnabled,
+            checked = notificationsDisabled,
             onCheckedChange = onNotificationToggle,
             modifier = Modifier.size(48.dp),
             enabled = true
