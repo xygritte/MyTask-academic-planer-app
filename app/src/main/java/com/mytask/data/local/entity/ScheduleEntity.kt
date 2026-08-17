@@ -8,10 +8,22 @@ data class ScheduleEntity(
     @PrimaryKey(autoGenerate = true)
     val id: Long = 0,
     val courseId: Long? = null,
+    /**
+     * 0 = Setiap Hari
+     * 1 = Minggu
+     * 2 = Senin
+     * 3 = Selasa
+     * 4 = Rabu
+     * 5 = Kamis
+     * 6 = Jumat
+     * 7 = Sabtu
+     */
     val dayOfWeek: Int,
-    /** Minutes elapsed since 00:00. */
+    /** Compatibility field for old data; contains the first range on new data. */
     val startMinutes: Int,
-    /** Minutes elapsed since 00:00. */
+    /** Compatibility field for old data; contains the first range on new data. */
     val endMinutes: Int,
-    val room: String = ""
+    val room: String = "",
+    /** JSON array containing all time ranges for this schedule. */
+    val timeRangesJson: String = ""
 )
