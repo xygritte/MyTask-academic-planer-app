@@ -7,9 +7,7 @@ import androidx.room.PrimaryKey
 data class ScheduleEntity(
     @PrimaryKey(autoGenerate = true)
     val id: Long = 0,
-
     val courseId: Long? = null,
-
     /**
      * 0 = Setiap Hari
      * 1 = Minggu
@@ -21,40 +19,11 @@ data class ScheduleEntity(
      * 7 = Sabtu
      */
     val dayOfWeek: Int,
-
-    /**
-     * Compatibility field.
-     *
-     * Untuk data lama dan backup lama.
-     * Pada data baru, nilai ini berisi rentang pertama.
-     */
+    /** Compatibility field for old data; contains the first range on new data. */
     val startMinutes: Int,
-
-    /**
-     * Compatibility field.
-     *
-     * Untuk data lama dan backup lama.
-     * Pada data baru, nilai ini berisi rentang pertama.
-     */
+    /** Compatibility field for old data; contains the first range on new data. */
     val endMinutes: Int,
-
     val room: String = "",
-
-    /**
-     * JSON array:
-     *
-     * [
-     *   {
-     *     "startMinutes": 60,
-     *     "endMinutes": 120
-     *   },
-     *   {
-     *     "startMinutes": 180,
-     *     "endMinutes": 240
-     *   }
-     * ]
-     *
-     * Blank = gunakan startMinutes/endMinutes lama.
-     */
+    /** JSON array containing all time ranges for this schedule. */
     val timeRangesJson: String = ""
 )

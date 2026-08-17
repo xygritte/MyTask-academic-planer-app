@@ -5,6 +5,7 @@ import android.content.Context
 import android.content.Intent
 import androidx.room.Room
 import com.mytask.data.local.MyTaskDatabase
+import com.mytask.data.local.getTimeRanges
 import com.mytask.data.local.toDisplayTime
 import com.mytask.data.repository.SettingsRepository
 import com.mytask.debug.AppDebugLog
@@ -21,6 +22,8 @@ class ScheduleNotificationReceiver : BroadcastReceiver() {
         const val ACTION_SCHEDULE_COUNTDOWN = "com.mytask.action.SCHEDULE_COUNTDOWN"
         const val ACTION_SCHEDULE_START = "com.mytask.action.SCHEDULE_START"
         const val EXTRA_SCHEDULE_ID = "schedule_id"
+        const val EXTRA_RANGE_INDEX = "range_index"
+        const val EXTRA_START_AT = "start_at"
     }
 
     override fun onReceive(context: Context, intent: Intent) {
@@ -44,7 +47,9 @@ class ScheduleNotificationReceiver : BroadcastReceiver() {
                     }
 
                     val settingsRepository = SettingsRepository(context.applicationContext)
-                    val notificationsEnabled = settingsRepository.scheduleNotificationEnabled(scheduleId).first()
+                    val notificationsEnabled = settingsRepository
+                        .scheduleNotificationEnabled(scheduleId)
+                        .first()
 
                     when (intent.action) {
                         ACTION_SCHEDULE_START -> {
@@ -52,13 +57,18 @@ class ScheduleNotificationReceiver : BroadcastReceiver() {
                                 context.applicationContext,
                                 scheduleId.toString()
                             )
+                            ReminderScheduler.cancelScheduleCountdown(
+                                context.applicationContext,
+                                scheduleId
+                            )
                             ReminderScheduler.scheduleNextScheduleReminder(
                                 context.applicationContext,
                                 schedule
                             )
                             AppDebugLog.d(
                                 "NOTIFICATION",
-                                "schedule started; notification cleared scheduleId=$scheduleId enabled=$notificationsEnabled"
+                                "schedule range started; next range scheduled scheduleId=$scheduleId " +
+                                    "rangeIndex=${intent.getIntExtra(EXTRA_RANGE_INDEX, -1)} enabled=$notificationsEnabled"
                             )
                         }
 
@@ -69,7 +79,10 @@ class ScheduleNotificationReceiver : BroadcastReceiver() {
                                     context.applicationContext,
                                     scheduleId.toString()
                                 )
-                                ReminderScheduler.cancelScheduleCountdown(context.applicationContext, scheduleId)
+                                ReminderScheduler.cancelScheduleCountdown(
+                                    context.applicationContext,
+                                    scheduleId
+                                )
                                 AppDebugLog.d(
                                     "NOTIFICATION",
                                     "schedule notification disabled scheduleId=$scheduleId"
@@ -77,7 +90,8 @@ class ScheduleNotificationReceiver : BroadcastReceiver() {
                                 return@launch
                             }
 
-                            val startAt = ReminderScheduler.currentOrNextScheduleStartTime(schedule)
+                            val startAt = intent.getLongExtra(EXTRA_START_AT, -1L).takeIf { it > 0L }
+                                ?: ReminderScheduler.currentOrNextScheduleStartTime(schedule)
                             val remainingMillis = startAt - System.currentTimeMillis()
                             if (remainingMillis <= 0L) {
                                 NotificationHelper.cancelScheduleNotification(
@@ -91,14 +105,27 @@ class ScheduleNotificationReceiver : BroadcastReceiver() {
                                 return@launch
                             }
 
+                            val rangeIndex = intent.getIntExtra(EXTRA_RANGE_INDEX, -1)
+                            val ranges = schedule.getTimeRanges().sortedBy { it.startMinutes }
+                            val range = ranges.getOrNull(rangeIndex)
+                                ?: ReminderScheduler.currentOrNextScheduleOccurrence(schedule)?.let { occurrence ->
+                                    com.mytask.data.local.ScheduleTimeRange(
+                                        occurrence.startMinutes,
+                                        occurrence.endMinutes
+                                    )
+                                }
+
                             val course = schedule.courseId?.let {
                                 database.courseDao().getCourseById(it).first()
                             }
+
                             val message = buildString {
-                                append(schedule.startMinutes.toDisplayTime())
-                                    .append(" - ")
-                                    .append(schedule.endMinutes.toDisplayTime())
-                                    .append("\n")
+                                if (range != null) {
+                                    append(range.startMinutes.toDisplayTime())
+                                        .append(" - ")
+                                        .append(range.endMinutes.toDisplayTime())
+                                        .append("\n")
+                                }
                                 append(course?.name ?: "Mata Kuliah")
                                 if (schedule.room.isNotBlank()) {
                                     append("\nRuangan: ").append(schedule.room)
@@ -121,7 +148,8 @@ class ScheduleNotificationReceiver : BroadcastReceiver() {
 
                             AppDebugLog.d(
                                 "NOTIFICATION",
-                                "schedule chronometer started scheduleId=$scheduleId countdownUntil=$startAt"
+                                "schedule notification started scheduleId=$scheduleId " +
+                                    "rangeIndex=$rangeIndex countdownUntil=$startAt"
                             )
                         }
                     }
