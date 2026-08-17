@@ -1,6 +1,9 @@
 package com.mytask.ui.template
 
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -9,23 +12,36 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.MenuBook
-import androidx.compose.material.icons.filled.Task
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.mytask.data.repository.AppTemplate
+import com.mytask.data.repository.TemplateCatalog
+import com.mytask.data.repository.TemplateSelectionStore
 
 @Composable
 fun AcademicTemplateDialog(
@@ -34,12 +50,16 @@ fun AcademicTemplateDialog(
     onSkip: () -> Unit,
     onApply: () -> Unit
 ) {
+    val context = LocalContext.current.applicationContext
+    val catalog = remember(context) { TemplateCatalog(context) }
+    val templates = remember(catalog) { catalog.templates }
+    var selectedTemplateId by remember { mutableStateOf<String?>(null) }
+
+    val selectedTemplate = templates.firstOrNull { it.id == selectedTemplateId }
 
     AlertDialog(
         onDismissRequest = {
-            if (!isApplying) {
-                onSkip()
-            }
+            if (!isApplying) onSkip()
         },
         icon = {
             Icon(
@@ -50,52 +70,56 @@ fun AcademicTemplateDialog(
         },
         title = {
             Text(
-                text = "Siapkan MyTask dengan template",
+                text = "Pilih template MyTask",
                 fontWeight = FontWeight.Bold
             )
         },
         text = {
             Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(430.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-
                 Text(
-                    text =
-                        "Kami menyediakan data awal agar kamu bisa " +
-                                "langsung mencoba semua fitur MyTask.",
+                    text = "Pilih data awal yang ingin ditambahkan. Template tidak menghapus data yang sudah ada dan dapat digunakan kembali kapan saja.",
                     style = MaterialTheme.typography.bodyMedium
                 )
 
-                TemplateStatRow(
-                    icon = Icons.Default.MenuBook,
-                    value = "7",
-                    label = "Mata kuliah"
-                )
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .weight(1f)
+                        .verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    templates.forEach { template ->
+                        val preview = runCatching { catalog.preview(template) }.getOrDefault(com.mytask.data.repository.TemplatePreview(0, 0))
+                        val selected = template.id == selectedTemplateId
+                        TemplateOptionCard(
+                            template = template,
+                            courses = preview.courses,
+                            schedules = preview.schedules,
+                            selected = selected,
+                            enabled = !isApplying,
+                            onClick = { selectedTemplateId = template.id }
+                        )
+                    }
+                }
 
-                TemplateStatRow(
-                    icon = Icons.Default.Task,
-                    value = "14",
-                    label = "Tugas"
-                )
-
-                TemplateStatRow(
-                    icon = Icons.Default.CalendarMonth,
-                    value = "7",
-                    label = "Jadwal kuliah"
-                )
-
-                Spacer(
-                    Modifier.height(2.dp)
-                )
-
-                Text(
-                    text =
-                        "Semua data menggunakan nama universal seperti " +
-                                "Mata Kuliah 1, Tugas 1, Dosen 1, dan " +
-                                "1 SKS. Data disimpan di perangkat ini.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
+                Surface(
+                    modifier = Modifier.fillMaxWidth(),
+                    color = MaterialTheme.colorScheme.surfaceVariant,
+                    shape = MaterialTheme.shapes.medium
+                ) {
+                    Text(
+                        text = selectedTemplate?.let { "Dipilih: ${it.name}" }
+                            ?: "Belum ada template yang dipilih.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(12.dp)
+                    )
+                }
 
                 if (!errorMessage.isNullOrBlank()) {
                     Text(
@@ -108,8 +132,13 @@ fun AcademicTemplateDialog(
         },
         confirmButton = {
             Button(
-                onClick = onApply,
-                enabled = !isApplying
+                onClick = {
+                    selectedTemplate?.let {
+                        TemplateSelectionStore.select(it)
+                        onApply()
+                    }
+                },
+                enabled = selectedTemplate != null && !isApplying
             ) {
                 if (isApplying) {
                     CircularProgressIndicator(
@@ -119,14 +148,7 @@ fun AcademicTemplateDialog(
                     )
                     Spacer(Modifier.width(8.dp))
                 }
-
-                Text(
-                    text = if (isApplying) {
-                        "Menerapkan..."
-                    } else {
-                        "Terapkan template"
-                    }
-                )
+                Text(if (isApplying) "Menerapkan..." else "Terapkan pilihan")
             }
         },
         dismissButton = {
@@ -141,35 +163,107 @@ fun AcademicTemplateDialog(
 }
 
 @Composable
-private fun TemplateStatRow(
+private fun TemplateOptionCard(
+    template: AppTemplate,
+    courses: Int,
+    schedules: Int,
+    selected: Boolean,
+    enabled: Boolean,
+    onClick: () -> Unit
+) {
+    val borderColor: Color = if (selected) {
+        MaterialTheme.colorScheme.primary
+    } else {
+        MaterialTheme.colorScheme.outline.copy(alpha = 0.4f)
+    }
+
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(enabled = enabled, onClick = onClick),
+        colors = CardDefaults.cardColors(
+            containerColor = if (selected) {
+                MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.8f)
+            } else {
+                MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.75f)
+            }
+        ),
+        border = BorderStroke(if (selected) 2.dp else 1.dp, borderColor)
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(14.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = template.icon,
+                style = MaterialTheme.typography.headlineSmall
+            )
+
+            Spacer(Modifier.width(12.dp))
+
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = template.name,
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold
+                )
+                Text(
+                    text = template.category,
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.primary
+                )
+                Spacer(Modifier.height(2.dp))
+                Text(
+                    text = template.description,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Spacer(Modifier.height(6.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    TemplateCount(
+                        icon = Icons.Default.MenuBook,
+                        value = courses,
+                        label = "mata kuliah"
+                    )
+                    TemplateCount(
+                        icon = Icons.Default.CalendarMonth,
+                        value = schedules,
+                        label = "jadwal"
+                    )
+                }
+            }
+
+            if (selected) {
+                Icon(
+                    imageVector = Icons.Default.CheckCircle,
+                    contentDescription = "Dipilih",
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(24.dp)
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun TemplateCount(
     icon: androidx.compose.ui.graphics.vector.ImageVector,
-    value: String,
+    value: Int,
     label: String
 ) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
         Icon(
             imageVector = icon,
             contentDescription = null,
-            tint = MaterialTheme.colorScheme.primary,
-            modifier = Modifier.size(22.dp)
+            modifier = Modifier.size(15.dp),
+            tint = MaterialTheme.colorScheme.onSurfaceVariant
         )
-
-        Spacer(Modifier.width(12.dp))
-
+        Spacer(Modifier.width(4.dp))
         Text(
-            text = value,
-            style = MaterialTheme.typography.titleMedium,
-            fontWeight = FontWeight.Bold
-        )
-
-        Spacer(Modifier.width(8.dp))
-
-        Text(
-            text = label,
-            style = MaterialTheme.typography.bodyMedium,
+            text = "$value $label",
+            style = MaterialTheme.typography.labelSmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
     }
