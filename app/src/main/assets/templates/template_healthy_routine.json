@@ -1,25 +1,25 @@
 {
   "app": "MyTask",
   "template": "daily_life_starter",
-  "version": 2,
+  "version": 3,
   "courses": [
     {
       "id": 28,
-      "name": "makan",
+      "name": "Waktu Makan",
       "code": "PRODUCTIVE",
       "lecturer": "",
       "room": "KITCHEN"
     },
     {
       "id": 29,
-      "name": "Jara",
+      "name": "Waktu Bersama",
       "code": "RELATIONSHIP",
       "lecturer": "",
       "room": ""
     },
     {
       "id": 30,
-      "name": "Furqon",
+      "name": "Waktu Pribadi",
       "code": "SELF SCHEDULE",
       "lecturer": "",
       "room": ""
