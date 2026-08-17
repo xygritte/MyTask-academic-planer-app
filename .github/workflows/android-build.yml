@@ -76,6 +76,136 @@ jobs:
             git push
           fi
 
+      - name: Patch schedule time picker callback
+        if: github.event_name == 'push'
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path('app/src/main/java/com/mytask/ui/schedule/ScheduleScreen.kt')
+          text = path.read_text(encoding='utf-8')
+
+          old_block = '''    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        TimeField(
+            label = "Mulai ${index + 1}",
+            value = range.startMinutes.toDisplayTime(),
+            modifier = Modifier.weight(1f)
+        ) {
+            val context = LocalContext.current
+            TimePickerDialog(
+                context,
+                { _, hour, minute -> onStartChanged(hour * 60 + minute) },
+                range.startMinutes / 60,
+                range.startMinutes % 60,
+                true
+            ).show()
+        }
+
+        Spacer(Modifier.width(8.dp))
+        Text("→", style = MaterialTheme.typography.titleLarge)
+        Spacer(Modifier.width(8.dp))
+
+        TimeField(
+            label = "Selesai ${index + 1}",
+            value = range.endMinutes.toDisplayTime(),
+            modifier = Modifier.weight(1f)
+        ) {
+            val context = LocalContext.current
+            TimePickerDialog(
+                context,
+                { _, hour, minute -> onEndChanged(hour * 60 + minute) },
+                range.endMinutes / 60,
+                range.endMinutes % 60,
+                true
+            ).show()
+        }
+'''
+          new_block = '''    val context = LocalContext.current
+
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        TimeField(
+            label = "Mulai ${index + 1}",
+            value = range.startMinutes.toDisplayTime(),
+            modifier = Modifier.weight(1f)
+        ) {
+            TimePickerDialog(
+                context,
+                { _, hour, minute -> onStartChanged(hour * 60 + minute) },
+                range.startMinutes / 60,
+                range.startMinutes % 60,
+                true
+            ).show()
+        }
+
+        Spacer(Modifier.width(8.dp))
+        Text("→", style = MaterialTheme.typography.titleLarge)
+        Spacer(Modifier.width(8.dp))
+
+        TimeField(
+            label = "Selesai ${index + 1}",
+            value = range.endMinutes.toDisplayTime(),
+            modifier = Modifier.weight(1f)
+        ) {
+            TimePickerDialog(
+                context,
+                { _, hour, minute -> onEndChanged(hour * 60 + minute) },
+                range.endMinutes / 60,
+                range.endMinutes % 60,
+                true
+            ).show()
+        }
+'''
+
+          old_signature = '''private fun TimeField(
+    label: String,
+    value: String,
+    modifier: Modifier,
+    onClick: @Composable () -> Unit
+)'''
+          new_signature = '''private fun TimeField(
+    label: String,
+    value: String,
+    modifier: Modifier,
+    onClick: () -> Unit
+)'''
+
+          old_surface = '        onClick = onClick as () -> Unit\n'
+          new_surface = '        onClick = onClick\n'
+
+          changed = False
+          if old_block in text:
+              text = text.replace(old_block, new_block, 1)
+              changed = True
+          if old_signature in text:
+              text = text.replace(old_signature, new_signature, 1)
+              changed = True
+          if old_surface in text:
+              text = text.replace(old_surface, new_surface, 1)
+              changed = True
+
+          if not changed:
+              print('Schedule time picker callback already patched; continuing without a commit.')
+          else:
+              path.write_text(text, encoding='utf-8')
+          PY
+
+          if git diff --quiet -- app/src/main/java/com/mytask/ui/schedule/ScheduleScreen.kt; then
+            echo "No schedule callback patch changes needed."
+          else
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add app/src/main/java/com/mytask/ui/schedule/ScheduleScreen.kt
+            git commit -m "fix(ui): make schedule time picker callback non-composable"
+            git push
+          fi
+
       - name: Set up JDK 17
         uses: actions/setup-java@v4
         with:
