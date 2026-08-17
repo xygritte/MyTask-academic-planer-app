@@ -58,7 +58,7 @@ class TemplateApplyRepository @Inject constructor(
                 templateCourseNames[templateId] = name
 
                 if (!courseIdsByName.containsKey(name)) {
-                    val id = database.courseDao().insert(
+                    database.courseDao().insert(
                         CourseEntity(
                             name = name,
                             code = item.optString("code"),
@@ -66,7 +66,9 @@ class TemplateApplyRepository @Inject constructor(
                             room = item.optString("room")
                         )
                     )
-                    courseIdsByName[name] = id
+                    courseIdsByName[name] = database.courseDao()
+                        .getCourseByName(name)
+                        ?: error("Mata kuliah template gagal dibuat.")
                     addedCourses++
                 }
             }
