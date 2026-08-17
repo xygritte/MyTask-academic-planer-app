@@ -66,12 +66,14 @@ class TemplateApplyRepository @Inject constructor(
                             room = item.optString("room")
                         )
                     )
-                    courseIdsByName[name] = database.courseDao()
-                        .getCourseByName(name)
-                        ?: error("Mata kuliah template gagal dibuat.")
                     addedCourses++
                 }
             }
+
+            courseIdsByName.clear()
+            courseIdsByName.putAll(
+                database.courseDao().getAllCoursesSnapshot().associate { it.name to it.id }
+            )
 
             val taskArray = root.optJSONArray("tasks") ?: JSONArray()
             val tasks = mutableListOf<TaskEntity>()
