@@ -11,18 +11,14 @@ import com.mytask.data.local.toMinuteOfDayOrNull
 import com.mytask.data.local.toScheduleTimeRangesOrNull
 import com.mytask.data.local.entity.CourseEntity
 import com.mytask.data.local.entity.ScheduleEntity
-import com.mytask.data.local.entity.TaskEntity
 import dagger.hilt.android.qualifiers.ApplicationContext
 import org.json.JSONArray
-import java.util.Calendar
-import java.util.Date
 import javax.inject.Inject
 import javax.inject.Singleton
 
 data class TemplateApplyResult(
     val alreadyApplied: Boolean,
     val addedCourses: Int,
-    val addedTasks: Int,
     val addedSchedules: Int
 )
 
@@ -37,11 +33,11 @@ class TemplateApplyRepository @Inject constructor(
     suspend fun apply(template: AppTemplate): TemplateApplyResult {
         val uid = FirebaseAuth.getInstance().currentUser?.uid ?: "guest"
         if (preferences.isTemplateApplied(uid, template.id, template.version)) {
-            return TemplateApplyResult(true, 0, 0, 0)
+            return TemplateApplyResult(true, 0, 0)
         }
 
         val root = catalog.readJson(template)
-        var result = TemplateApplyResult(false, 0, 0, 0)
+        var result = TemplateApplyResult(false, 0, 0)
 
         database.withTransaction {
             val existingCourses = database.courseDao().getAllCoursesSnapshot()
@@ -74,27 +70,6 @@ class TemplateApplyRepository @Inject constructor(
             courseIdsByName.putAll(
                 database.courseDao().getAllCoursesSnapshot().associate { it.name to it.id }
             )
-
-            val taskArray = root.optJSONArray("tasks") ?: JSONArray()
-            val tasks = mutableListOf<TaskEntity>()
-            for (index in 0 until taskArray.length()) {
-                val item = taskArray.getJSONObject(index)
-                val templateCourseId = item.optLong("courseId", Long.MIN_VALUE)
-                val courseName = templateCourseNames[templateCourseId]
-                val actualCourseId = courseName?.let { courseIdsByName[it] }
-                val title = item.optString("title").trim()
-                require(title.isNotBlank()) { "Template memiliki tugas tanpa judul." }
-                tasks += TaskEntity(
-                    courseId = actualCourseId,
-                    title = title,
-                    description = item.optString("description"),
-                    deadline = buildDeadline(item.optInt("deadlineOffsetDays", 7)),
-                    priority = item.optInt("priority", 1).coerceIn(1, 5),
-                    isCompleted = item.optBoolean("isCompleted", false),
-                    completedAt = null
-                )
-            }
-            if (tasks.isNotEmpty()) database.taskDao().insertAll(tasks)
 
             val scheduleArray = root.optJSONArray("schedules") ?: JSONArray()
             val schedules = mutableListOf<ScheduleEntity>()
@@ -149,22 +124,11 @@ class TemplateApplyRepository @Inject constructor(
             }
             if (schedules.isNotEmpty()) database.scheduleDao().insertAll(schedules)
 
-            result = TemplateApplyResult(false, addedCourses, tasks.size, schedules.size)
+            result = TemplateApplyResult(false, addedCourses, schedules.size)
         }
 
         preferences.markTemplateApplied(uid, template.id, template.version)
         ReminderScheduler.initialize(context)
         return result
-    }
-
-    private fun buildDeadline(offsetDays: Int): Date {
-        val calendar = Calendar.getInstance().apply {
-            set(Calendar.HOUR_OF_DAY, 23)
-            set(Calendar.MINUTE, 59)
-            set(Calendar.SECOND, 59)
-            set(Calendar.MILLISECOND, 999)
-            add(Calendar.DAY_OF_YEAR, offsetDays.coerceAtLeast(0))
-        }
-        return calendar.time
     }
 }
