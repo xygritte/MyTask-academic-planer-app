@@ -1,20 +1,20 @@
 package com.mytask.data.repository
 
 /**
- * Small in-memory bridge used only by the first-login template catalog dialog.
- * The selected template is consumed immediately by TemplateDataImporter.
+ * In-memory bridge used only by the first-login template catalog dialog.
+ * Selected templates are consumed immediately by TemplateDataImporter.
  */
 object TemplateSelectionStore {
     @Volatile
-    private var selectedTemplate: AppTemplate? = null
+    private var selectedTemplates: List<AppTemplate> = emptyList()
 
-    fun select(template: AppTemplate) {
-        selectedTemplate = template
+    fun selectAll(templates: List<AppTemplate>) {
+        selectedTemplates = templates.distinctBy { "${it.id}@${it.version}" }
     }
 
-    fun consume(): AppTemplate? {
-        val template = selectedTemplate
-        selectedTemplate = null
-        return template
+    fun consumeAll(): List<AppTemplate> {
+        val templates = selectedTemplates
+        selectedTemplates = emptyList()
+        return templates
     }
 }
