@@ -1,0 +1,17 @@
+{
+  "app": "MyTask",
+  "template": "healthy_daily_routine",
+  "version": 1,
+  "courses": [
+    {"id": 1001, "name": "Rutinitas Kesehatan", "code": "HEALTH", "lecturer": "", "room": ""}
+  ],
+  "tasks": [
+    {"id": 1001, "courseId": 1001, "title": "Minum Air Putih", "description": "Penuhi kebutuhan minum air secara rutin sepanjang hari.", "deadlineOffsetDays": 0, "priority": 1, "isCompleted": false},
+    {"id": 1002, "courseId": 1001, "title": "Sarapan", "description": "Makan pagi dengan porsi yang cukup.", "deadlineOffsetDays": 0, "priority": 1, "isCompleted": false},
+    {"id": 1003, "courseId": 1001, "title": "Olahraga Ringan", "description": "Bergerak atau berolahraga minimal 30 menit.", "deadlineOffsetDays": 0, "priority": 2, "isCompleted": false}
+  ],
+  "schedules": [
+    {"id": 1001, "courseId": 1001, "dayOfWeek": 0, "timeRanges": [{"startMinutes": 390, "endMinutes": 400}], "room": ""},
+    {"id": 1002, "courseId": 1001, "dayOfWeek": 0, "timeRanges": [{"startMinutes": 1020, "endMinutes": 1050}], "room": ""}
+  ]
+}
