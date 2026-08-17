@@ -26,15 +26,11 @@ data class TemplateApplyResult(
 class TemplateApplyRepository @Inject constructor(
     @ApplicationContext private val context: Context,
     private val database: MyTaskDatabase,
-    private val catalog: TemplateCatalog,
-    private val preferences: TemplatePreferenceRepository
+    private val catalog: TemplateCatalog
 ) {
 
     suspend fun apply(template: AppTemplate): TemplateApplyResult {
-        val uid = FirebaseAuth.getInstance().currentUser?.uid ?: "guest"
-        if (preferences.isTemplateApplied(uid, template.id, template.version)) {
-            return TemplateApplyResult(true, 0, 0)
-        }
+        FirebaseAuth.getInstance().currentUser?.uid ?: "guest"
 
         val root = catalog.readJson(template)
         var result = TemplateApplyResult(false, 0, 0)
@@ -127,7 +123,6 @@ class TemplateApplyRepository @Inject constructor(
             result = TemplateApplyResult(false, addedCourses, schedules.size)
         }
 
-        preferences.markTemplateApplied(uid, template.id, template.version)
         ReminderScheduler.initialize(context)
         return result
     }
