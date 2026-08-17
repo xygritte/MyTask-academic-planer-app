@@ -3,14 +3,14 @@
   "template": "olahraga_kebugaran",
   "version": 3,
   "courses": [
-    { "id": 301, "name": "Lari Pagi", "code": "PRODUKTIVITAS", "lecturer": "", "room": "TAMAN" },
-    { "id": 302, "name": "Latihan Kekuatan", "code": "PRODUKTIVITAS", "lecturer": "", "room": "RUANG OLAHRAGA" },
-    { "id": 303, "name": "Peregangan (Stretching)", "code": "PRODUKTIVITAS", "lecturer": "", "room": "RUANG TAMU" }
+    { "id": 301, "name": "Lari Pagi", "code": "PRODUKTIVITAS", "lecturer": "", "room": "" },
+    { "id": 302, "name": "Latihan Kekuatan", "code": "PRODUKTIVITAS", "lecturer": "", "room": "" },
+    { "id": 303, "name": "Peregangan (Stretching)", "code": "PRODUKTIVITAS", "lecturer": "", "room": "" }
   ],
   "tasks": [],
   "schedules": [
-    { "id": 401, "courseId": 301, "dayOfWeek": 2, "timeRanges": [{ "startMinutes": 360, "endMinutes": 420 }, { "startMinutes": 1020, "endMinutes": 1080 }], "room": "TAMAN" },
-    { "id": 402, "courseId": 302, "dayOfWeek": 4, "timeRanges": [{ "startMinutes": 480, "endMinutes": 540 }, { "startMinutes": 960, "endMinutes": 1020 }], "room": "RUANG OLAHRAGA" },
-    { "id": 403, "courseId": 303, "dayOfWeek": 0, "timeRanges": [{ "startMinutes": 300, "endMinutes": 330 }, { "startMinutes": 1140, "endMinutes": 1170 }], "room": "RUANG TAMU" }
+    { "id": 401, "courseId": 301, "dayOfWeek": 2, "timeRanges": [{ "startMinutes": 360, "endMinutes": 420 }, { "startMinutes": 1020, "endMinutes": 1080 }], "room": "" },
+    { "id": 402, "courseId": 302, "dayOfWeek": 4, "timeRanges": [{ "startMinutes": 480, "endMinutes": 540 }, { "startMinutes": 960, "endMinutes": 1020 }], "room": "" },
+    { "id": 403, "courseId": 303, "dayOfWeek": 0, "timeRanges": [{ "startMinutes": 300, "endMinutes": 330 }, { "startMinutes": 1140, "endMinutes": 1170 }], "room": "" }
   ]
 }
