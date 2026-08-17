@@ -397,8 +397,8 @@ private fun ScheduleForm(
                 }
             }
 
-            FormSection("Waktu Kuliah", "Satu jadwal dapat memiliki beberapa rentang waktu") {
-                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            FormSection("Waktu Kuliah", "Atur satu atau beberapa sesi waktu untuk jadwal ini") {
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     timeRanges.forEachIndexed { index, range ->
                         TimeRangeEditorRow(
                             index = index,
@@ -426,13 +426,21 @@ private fun ScheduleForm(
                             val newEnd = (newStart + 60).coerceAtMost(1439)
                             if (newEnd > newStart) timeRanges = timeRanges + ScheduleTimeRange(newStart, newEnd)
                         },
-                        modifier = Modifier.fillMaxWidth()
+                        modifier = Modifier.fillMaxWidth().height(50.dp),
+                        shape = RoundedCornerShape(14.dp)
                     ) {
                         Icon(Icons.Default.Add, contentDescription = null)
                         Spacer(Modifier.width(8.dp))
-                        Text("Tambah Rentang Waktu")
+                        Text("Tambah Rentang Waktu", fontWeight = FontWeight.SemiBold)
                     }
-                    timeError?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error) }
+                    timeError?.let {
+                        Text(
+                            it,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.error,
+                            modifier = Modifier.padding(horizontal = 4.dp)
+                        )
+                    }
                 }
             }
 
@@ -462,24 +470,88 @@ private fun TimeRangeEditorRow(
     onDelete: () -> Unit,
     onPickTime: (Int, (Int) -> Unit) -> Unit
 ) {
-    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-        TimeField(
-            label = "Mulai ${index + 1}",
-            value = range.startMinutes.toDisplayTime(),
-            modifier = Modifier.weight(1f),
-            onClick = { onPickTime(range.startMinutes, onStartChanged) }
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)
+        ),
+        border = BorderStroke(
+            1.dp,
+            MaterialTheme.colorScheme.outline.copy(alpha = 0.2f)
         )
-        Spacer(Modifier.width(8.dp))
-        Text("→", style = MaterialTheme.typography.titleLarge)
-        Spacer(Modifier.width(8.dp))
-        TimeField(
-            label = "Selesai ${index + 1}",
-            value = range.endMinutes.toDisplayTime(),
-            modifier = Modifier.weight(1f),
-            onClick = { onPickTime(range.endMinutes, onEndChanged) }
-        )
-        if (canDelete) {
-            IconButton(onClick = onDelete) { Icon(Icons.Default.Delete, contentDescription = "Hapus rentang waktu") }
+    ) {
+        Column(Modifier.fillMaxWidth().padding(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Surface(
+                    modifier = Modifier.size(30.dp),
+                    shape = RoundedCornerShape(9.dp),
+                    color = MaterialTheme.colorScheme.secondaryContainer
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Text(
+                            text = "${index + 1}",
+                            style = MaterialTheme.typography.labelLarge,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                    }
+                }
+                Spacer(Modifier.width(10.dp))
+                Column(Modifier.weight(1f)) {
+                    Text(
+                        "Rentang ${index + 1}",
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                    Text(
+                        "Tentukan waktu mulai dan selesai",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                if (canDelete) {
+                    IconButton(onClick = onDelete) {
+                        Icon(Icons.Default.Delete, contentDescription = "Hapus rentang waktu", tint = MaterialTheme.colorScheme.error)
+                    }
+                }
+            }
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                TimeField(
+                    label = "Mulai",
+                    value = range.startMinutes.toDisplayTime(),
+                    modifier = Modifier.weight(1f),
+                    onClick = { onPickTime(range.startMinutes, onStartChanged) }
+                )
+                Surface(
+                    modifier = Modifier.size(34.dp),
+                    shape = CircleShape,
+                    color = MaterialTheme.colorScheme.secondaryContainer
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Text(
+                            "→",
+                            style = MaterialTheme.typography.titleMedium,
+                            color = MaterialTheme.colorScheme.primary,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                }
+                TimeField(
+                    label = "Selesai",
+                    value = range.endMinutes.toDisplayTime(),
+                    modifier = Modifier.weight(1f),
+                    onClick = { onPickTime(range.endMinutes, onEndChanged) }
+                )
+            }
         }
     }
 }
@@ -504,19 +576,43 @@ private fun FormSection(title: String, subtitle: String? = null, content: @Compo
 @Composable
 private fun TimeField(label: String, value: String, modifier: Modifier, onClick: () -> Unit) {
     Surface(
-        modifier = modifier.height(82.dp).clickable(onClick = onClick),
-        shape = RoundedCornerShape(16.dp),
-        color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.45f),
+        modifier = modifier.height(78.dp).clickable(onClick = onClick),
+        shape = RoundedCornerShape(14.dp),
+        color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f),
         border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.22f))
     ) {
-        Row(Modifier.fillMaxSize().padding(horizontal = 14.dp), verticalAlignment = Alignment.CenterVertically) {
-            Icon(Icons.Default.AccessTime, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
-            Spacer(Modifier.width(10.dp))
-            Column {
-                Text(label, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                Text(value, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-                Text("Ketuk untuk mengubah", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Column(
+            modifier = Modifier.fillMaxSize().padding(horizontal = 12.dp, vertical = 10.dp),
+            verticalArrangement = Arrangement.Center
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    Icons.Default.AccessTime,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(20.dp)
+                )
+                Spacer(Modifier.width(8.dp))
+                Text(
+                    label,
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    fontWeight = FontWeight.Medium
+                )
             }
+            Spacer(Modifier.height(2.dp))
+            Text(
+                value,
+                style = MaterialTheme.typography.headlineSmall,
+                fontWeight = FontWeight.Bold,
+                maxLines = 1
+            )
+            Text(
+                "Ketuk untuk mengubah",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1
+            )
         }
     }
 }
