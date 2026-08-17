@@ -1,0 +1,16 @@
+{
+  "app": "MyTask",
+  "template": "ibadah_harian",
+  "version": 3,
+  "courses": [
+    { "id": 201, "name": "Sholat Fardhu", "code": "IBADAH", "lecturer": "", "room": "MASJID" },
+    { "id": 202, "name": "Membaca Al-Quran", "code": "IBADAH", "lecturer": "", "room": "RUANG BELAJAR" },
+    { "id": 203, "name": "Dzikir Pagi & Petang", "code": "IBADAH", "lecturer": "", "room": "RUANG TAMU" }
+  ],
+  "tasks": [],
+  "schedules": [
+    { "id": 301, "courseId": 201, "dayOfWeek": 0, "timeRanges": [{ "startMinutes": 257, "endMinutes": 265 }, { "startMinutes": 693, "endMinutes": 710 }, { "startMinutes": 894, "endMinutes": 910 }, { "startMinutes": 1050, "endMinutes": 1070 }, { "startMinutes": 1120, "endMinutes": 1140 }], "room": "MASJID" },
+    { "id": 302, "courseId": 202, "dayOfWeek": 0, "timeRanges": [{ "startMinutes": 300, "endMinutes": 330 }, { "startMinutes": 1140, "endMinutes": 1170 }], "room": "RUANG BELAJAR" },
+    { "id": 303, "courseId": 203, "dayOfWeek": 0, "timeRanges": [{ "startMinutes": 270, "endMinutes": 285 }, { "startMinutes": 1080, "endMinutes": 1095 }], "room": "RUANG TAMU" }
+  ]
+}
