@@ -3,14 +3,14 @@
   "template": "belajar_pengembangan",
   "version": 3,
   "courses": [
-    { "id": 401, "name": "Membaca Buku", "code": "PRODUKTIVITAS", "lecturer": "", "room": "RUANG BACA" },
-    { "id": 402, "name": "Latihan Bahasa Inggris", "code": "PRODUKTIVITAS", "lecturer": "", "room": "RUANG BELAJAR" },
-    { "id": 403, "name": "Menulis Jurnal", "code": "PRODUKTIVITAS", "lecturer": "", "room": "MEJA KERJA" }
+    { "id": 401, "name": "Membaca Buku", "code": "PRODUKTIVITAS", "lecturer": "", "room": "" },
+    { "id": 402, "name": "Latihan Bahasa Inggris", "code": "PRODUKTIVITAS", "lecturer": "", "room": "" },
+    { "id": 403, "name": "Menulis Jurnal", "code": "PRODUKTIVITAS", "lecturer": "", "room": "" }
   ],
   "tasks": [],
   "schedules": [
-    { "id": 501, "courseId": 401, "dayOfWeek": 1, "timeRanges": [{ "startMinutes": 420, "endMinutes": 480 }, { "startMinutes": 1200, "endMinutes": 1260 }], "room": "RUANG BACA" },
-    { "id": 502, "courseId": 402, "dayOfWeek": 3, "timeRanges": [{ "startMinutes": 540, "endMinutes": 600 }, { "startMinutes": 1080, "endMinutes": 1140 }], "room": "RUANG BELAJAR" },
-    { "id": 503, "courseId": 403, "dayOfWeek": 0, "timeRanges": [{ "startMinutes": 1260, "endMinutes": 1290 }], "room": "MEJA KERJA" }
+    { "id": 501, "courseId": 401, "dayOfWeek": 1, "timeRanges": [{ "startMinutes": 420, "endMinutes": 480 }, { "startMinutes": 1200, "endMinutes": 1260 }], "room": "" },
+    { "id": 502, "courseId": 402, "dayOfWeek": 3, "timeRanges": [{ "startMinutes": 540, "endMinutes": 600 }, { "startMinutes": 1080, "endMinutes": 1140 }], "room": "" },
+    { "id": 503, "courseId": 403, "dayOfWeek": 0, "timeRanges": [{ "startMinutes": 1260, "endMinutes": 1290 }], "room": "" }
   ]
 }
