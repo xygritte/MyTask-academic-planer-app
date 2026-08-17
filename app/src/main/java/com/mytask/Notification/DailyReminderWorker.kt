@@ -41,7 +41,6 @@ class DailyReminderWorker(
 
             checkDeadlineTasks(tasks, reminderDays)
             ReminderScheduler.rescheduleAllTaskDeadlines(applicationContext, tasks)
-
             checkScheduleNotificationWindow(database, schedules)
             ReminderScheduler.rescheduleAllScheduleReminders(applicationContext, schedules)
             ReminderScheduler.scheduleNextMidnight(applicationContext)
@@ -78,18 +77,9 @@ class DailyReminderWorker(
                     set(Calendar.SECOND, 0)
                     set(Calendar.MILLISECOND, 0)
                 }
-
                 val startMillis = start.timeInMillis
-                val withinTwoHourWindow =
-                    nowMillis >= startMillis - twoHoursMillis &&
-                        nowMillis < startMillis
-
+                val withinTwoHourWindow = nowMillis >= startMillis - twoHoursMillis && nowMillis < startMillis
                 if (!withinTwoHourWindow) return@forEach
-
-                val remainingMillis = startMillis - nowMillis
-                val remainingMinutes = TimeUnit.MILLISECONDS
-                    .toMinutes(remainingMillis + 59_999L)
-                    .coerceAtLeast(1L)
 
                 val course = schedule.courseId?.let { courseId ->
                     courses.find { course -> course.id == courseId }
@@ -101,32 +91,25 @@ class DailyReminderWorker(
                         .append(schedule.endMinutes.toDisplayTime())
                         .append("\n")
                     append(course?.name ?: "Mata Kuliah")
-                    if (schedule.room.isNotBlank()) {
-                        append("\nRuangan: ").append(schedule.room)
-                    }
-                    append("\n\nKuliah yang akan datang ")
-                        .append(remainingMinutes)
-                        .append(" menit lagi.")
+                    if (schedule.room.isNotBlank()) append("\nRuangan: ").append(schedule.room)
+                    append("\n\nWaktu berjalan live sampai kuliah dimulai.")
                 }
 
                 NotificationHelper.showScheduleNotification(
                     applicationContext,
                     schedule.id.toString(),
-                    "🕒 Kuliah yang akan datang ${remainingMinutes} menit lagi",
-                    message
+                    "🕒 Kuliah yang akan datang",
+                    message,
+                    countdownUntilMillis = startMillis
                 )
 
-                // Start/continue the silent one-minute countdown using the same
-                // notification ID. The user sees the number change without a
-                // new notification sound/vibration every minute.
-                ReminderScheduler.scheduleCountdownTick(
-                    applicationContext,
-                    schedule.id
-                )
+                // The notification's native chronometer updates the countdown locally.
+                // No per-minute alarm is scheduled and no repeated notification sound is generated.
+                ReminderScheduler.cancelScheduleCountdown(applicationContext, schedule.id)
 
                 AppDebugLog.d(
                     "NOTIFICATION",
-                    "schedule notification active-window scheduleId=${schedule.id} remainingMinutes=$remainingMinutes"
+                    "schedule chronometer active-window scheduleId=${schedule.id} countdownUntil=$startMillis"
                 )
             }
     }
