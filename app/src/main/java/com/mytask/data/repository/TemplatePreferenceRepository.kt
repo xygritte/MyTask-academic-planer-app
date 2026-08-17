@@ -21,11 +21,8 @@ private val Context.templatePreferencesDataStore by preferencesDataStore(
 class TemplatePreferenceRepository @Inject constructor(
     @ApplicationContext private val context: Context
 ) {
-
-    private fun promptKey(uid: String) =
-        booleanPreferencesKey("academic_template_prompt_v2_shown_$uid")
-
-    private val appliedTemplatesKey = stringSetPreferencesKey("applied_template_versions")
+    private fun promptKey(uid: String) = booleanPreferencesKey("academic_template_prompt_v2_shown_$uid")
+    private fun appliedTemplatesKey(uid: String) = stringSetPreferencesKey("applied_template_versions_$uid")
 
     fun promptShown(uid: String): Flow<Boolean> =
         context.templatePreferencesDataStore.data.map { preferences: Preferences ->
@@ -38,20 +35,20 @@ class TemplatePreferenceRepository @Inject constructor(
         }
     }
 
-    fun appliedTemplateKeys(): Flow<Set<String>> =
+    fun appliedTemplateKeys(uid: String): Flow<Set<String>> =
         context.templatePreferencesDataStore.data.map { preferences ->
-            preferences[appliedTemplatesKey] ?: emptySet()
+            preferences[appliedTemplatesKey(uid)] ?: emptySet()
         }
 
-    suspend fun isTemplateApplied(templateId: String, version: Int): Boolean =
-        appliedTemplateKeys().map { it.contains("$templateId@$version") }.first()
+    suspend fun isTemplateApplied(uid: String, templateId: String, version: Int): Boolean =
+        appliedTemplateKeys(uid).map { it.contains("$templateId@$version") }.first()
 
-    suspend fun markTemplateApplied(templateId: String, version: Int) {
+    suspend fun markTemplateApplied(uid: String, templateId: String, version: Int) {
         val key = "$templateId@$version"
         context.templatePreferencesDataStore.edit { preferences ->
-            val current = (preferences[appliedTemplatesKey] ?: emptySet()).toMutableSet()
+            val current = (preferences[appliedTemplatesKey(uid)] ?: emptySet()).toMutableSet()
             current.add(key)
-            preferences[appliedTemplatesKey] = current
+            preferences[appliedTemplatesKey(uid)] = current
         }
     }
 }
