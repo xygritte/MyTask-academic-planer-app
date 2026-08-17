@@ -1,7 +1,6 @@
 package com.mytask.Notification
 
 import android.content.Context
-import androidx.room.Room
 import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
 import com.mytask.data.local.MyTaskDatabase
@@ -22,11 +21,7 @@ class DailyReminderWorker(
 ) : CoroutineWorker(appContext, workerParams) {
 
     override suspend fun doWork(): Result {
-        val database = Room.databaseBuilder(
-            applicationContext,
-            MyTaskDatabase::class.java,
-            "mytask_db"
-        ).build()
+        val database = MyTaskDatabase.builder(applicationContext).build()
         val settingsRepository = SettingsRepository(applicationContext)
 
         return try {
