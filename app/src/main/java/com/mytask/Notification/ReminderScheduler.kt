@@ -5,8 +5,8 @@ import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
 import android.os.Build
-import androidx.room.Room
 import com.mytask.data.local.MyTaskDatabase
+import com.mytask.data.local.ScheduleRangeResolver
 import com.mytask.data.local.entity.ScheduleEntity
 import com.mytask.data.local.entity.TaskEntity
 import com.mytask.data.local.getTimeRanges
@@ -25,6 +25,7 @@ object ReminderScheduler {
     private const val SCHEDULE_REQUEST_BASE = 7000
     private const val SCHEDULE_START_REQUEST_BASE = 8000
     private const val SCHEDULE_COUNTDOWN_REQUEST_BASE = 9000
+    private const val SCHEDULE_END_REQUEST_BASE = 9500
     private const val IMMEDIATE_WORK_NAME = "mytask_today_notification"
     const val EVERY_DAY = 0
     const val TWO_HOURS_MILLIS = 2 * 60 * 60 * 1000L
@@ -77,36 +78,67 @@ object ReminderScheduler {
     fun scheduleScheduleReminder(context: Context, schedule: ScheduleEntity) {
         cancelScheduleReminderAlarms(context, schedule.id)
 
-        val occurrence = currentOrNextScheduleOccurrence(schedule) ?: run {
-            AppDebugLog.d("NOTIFICATION", "no valid schedule ranges id=${schedule.id}")
+        val resolved = ScheduleRangeResolver.resolve(schedule) ?: run {
+            AppDebugLog.d("NOTIFICATION", "no valid schedule range scheduleId=${schedule.id}")
             return
         }
 
-        val nowMillis = System.currentTimeMillis()
-        val reminderAt = occurrence.startAt - TWO_HOURS_MILLIS
-        val triggerAt = if (nowMillis < reminderAt) reminderAt else nowMillis + 1_000L
-
-        val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
-        setScheduleAlarm(
-            alarmManager,
-            triggerAt,
-            scheduleReminderPendingIntent(context, schedule.id, occurrence)
-        )
-        setScheduleAlarm(
-            alarmManager,
-            occurrence.startAt,
-            scheduleStartPendingIntent(context, schedule.id, occurrence)
-        )
-
-        AppDebugLog.d(
-            "NOTIFICATION",
-            "schedule reminder scheduled scheduleId=${schedule.id} rangeIndex=${occurrence.rangeIndex} " +
-                "startAt=${occurrence.startAt} triggerAt=$triggerAt"
-        )
+        when (resolved.state) {
+            ScheduleRangeResolver.State.ACTIVE -> {
+                setScheduleEndAlarm(
+                    context,
+                    schedule.id,
+                    resolved.rangeIndex,
+                    resolved.endAt
+                )
+                AppDebugLog.d(
+                    "NOTIFICATION",
+                    "schedule currently active scheduleId=${schedule.id} rangeIndex=${resolved.rangeIndex} endAt=${resolved.endAt}"
+                )
+            }
+            ScheduleRangeResolver.State.NEXT -> {
+                val nowMillis = System.currentTimeMillis()
+                val reminderAt = resolved.startAt - TWO_HOURS_MILLIS
+                val triggerAt = if (nowMillis < reminderAt) reminderAt else nowMillis + 1_000L
+                val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
+                setScheduleAlarm(
+                    alarmManager,
+                    triggerAt,
+                    scheduleReminderPendingIntent(context, schedule.id, ScheduleOccurrence(
+                        resolved.rangeIndex,
+                        resolved.startAt,
+                        resolved.range.startMinutes,
+                        resolved.range.endMinutes
+                    ))
+                )
+                setScheduleAlarm(
+                    alarmManager,
+                    resolved.startAt,
+                    scheduleStartPendingIntent(context, schedule.id, ScheduleOccurrence(
+                        resolved.rangeIndex,
+                        resolved.startAt,
+                        resolved.range.startMinutes,
+                        resolved.range.endMinutes
+                    ))
+                )
+                AppDebugLog.d(
+                    "NOTIFICATION",
+                    "schedule next range scheduled scheduleId=${schedule.id} rangeIndex=${resolved.rangeIndex} " +
+                        "startAt=${resolved.startAt} triggerAt=$triggerAt"
+                )
+            }
+            ScheduleRangeResolver.State.FINISHED -> {
+                AppDebugLog.d("NOTIFICATION", "schedule finished for today scheduleId=${schedule.id}")
+            }
+        }
     }
 
     fun scheduleNextScheduleReminder(context: Context, schedule: ScheduleEntity) {
         scheduleScheduleReminder(context, schedule)
+    }
+
+    fun scheduleScheduleEnd(context: Context, scheduleId: Long, rangeIndex: Int, endAt: Long) {
+        setScheduleEndAlarm(context, scheduleId, rangeIndex, endAt)
     }
 
     fun cancelScheduleCountdown(context: Context, scheduleId: Long) {
@@ -171,27 +203,21 @@ object ReminderScheduler {
         schedule: ScheduleEntity,
         nowMillis: Long = System.currentTimeMillis()
     ): ScheduleOccurrence? {
-        return schedule.getTimeRanges()
-            .sortedBy { it.startMinutes }
-            .mapIndexedNotNull { index, range ->
-                occurrenceAtOrAfterStart(schedule, range.startMinutes, nowMillis)?.let { startAt ->
-                    ScheduleOccurrence(
-                        rangeIndex = index,
-                        startAt = startAt,
-                        startMinutes = range.startMinutes,
-                        endMinutes = range.endMinutes
-                    )
-                }
-            }
-            .minByOrNull { it.startAt }
+        val resolved = ScheduleRangeResolver.resolve(schedule, nowMillis) ?: return null
+        if (resolved.state == ScheduleRangeResolver.State.FINISHED) return null
+        return ScheduleOccurrence(
+            rangeIndex = resolved.rangeIndex,
+            startAt = resolved.startAt,
+            startMinutes = resolved.range.startMinutes,
+            endMinutes = resolved.range.endMinutes
+        )
     }
 
     fun currentOrNextScheduleStartTime(
         schedule: ScheduleEntity,
         nowMillis: Long = System.currentTimeMillis()
     ): Long {
-        return currentOrNextScheduleOccurrence(schedule, nowMillis)?.startAt
-            ?: nowMillis
+        return currentOrNextScheduleOccurrence(schedule, nowMillis)?.startAt ?: nowMillis
     }
 
     fun occurrenceAfterCurrentRange(
@@ -201,41 +227,56 @@ object ReminderScheduler {
     ): ScheduleOccurrence? {
         val ranges = schedule.getTimeRanges().sortedBy { it.startMinutes }
         val nextIndex = rangeIndex + 1
-        if (nextIndex in ranges.indices) {
-            val range = ranges[nextIndex]
-            occurrenceAtOrAfterStart(schedule, range.startMinutes, nowMillis)?.let { startAt ->
-                return ScheduleOccurrence(
-                    rangeIndex = nextIndex,
-                    startAt = startAt,
-                    startMinutes = range.startMinutes,
-                    endMinutes = range.endMinutes
-                )
+        if (nextIndex !in ranges.indices) return null
+
+        val range = ranges[nextIndex]
+        val resolved = ScheduleRangeResolver.resolve(schedule, nowMillis)
+        val startAt = resolved?.let {
+            if (it.rangeIndex == nextIndex && it.state == ScheduleRangeResolver.State.NEXT) it.startAt else null
+        } ?: run {
+            var candidate = nowMillis
+            for (offset in 0..7) {
+                val calendar = Calendar.getInstance().apply {
+                    timeInMillis = nowMillis
+                    set(Calendar.HOUR_OF_DAY, 0)
+                    set(Calendar.MINUTE, 0)
+                    set(Calendar.SECOND, 0)
+                    set(Calendar.MILLISECOND, 0)
+                    add(Calendar.DAY_OF_YEAR, offset)
+                    set(Calendar.HOUR_OF_DAY, range.startMinutes / 60)
+                    set(Calendar.MINUTE, range.startMinutes % 60)
+                }
+                val matches = schedule.dayOfWeek == EVERY_DAY ||
+                    schedule.dayOfWeek == calendar.get(Calendar.DAY_OF_WEEK)
+                if (matches && calendar.timeInMillis > nowMillis) {
+                    candidate = calendar.timeInMillis
+                    break
+                }
             }
+            candidate.takeIf { it > nowMillis }
         }
-        return null
+
+        return startAt?.let {
+            ScheduleOccurrence(nextIndex, it, range.startMinutes, range.endMinutes)
+        }
     }
 
-    private fun occurrenceAtOrAfterStart(
-        schedule: ScheduleEntity,
-        startMinutes: Int,
-        nowMillis: Long
-    ): Long {
-        val now = Calendar.getInstance().apply { timeInMillis = nowMillis }
-        val candidate = Calendar.getInstance().apply {
-            timeInMillis = nowMillis
-            set(Calendar.HOUR_OF_DAY, startMinutes / 60)
-            set(Calendar.MINUTE, startMinutes % 60)
-            set(Calendar.SECOND, 0)
-            set(Calendar.MILLISECOND, 0)
-
-            if (schedule.dayOfWeek == EVERY_DAY) {
-                if (timeInMillis <= nowMillis) add(Calendar.DAY_OF_YEAR, 1)
-            } else {
-                set(Calendar.DAY_OF_WEEK, schedule.dayOfWeek)
-                if (timeInMillis <= nowMillis) add(Calendar.WEEK_OF_YEAR, 1)
-            }
+    private fun setScheduleEndAlarm(context: Context, scheduleId: Long, rangeIndex: Int, endAt: Long) {
+        if (endAt <= System.currentTimeMillis()) return
+        val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
+        val intent = Intent(context, ScheduleNotificationReceiver::class.java).apply {
+            action = ScheduleNotificationReceiver.ACTION_SCHEDULE_END
+            putExtra(ScheduleNotificationReceiver.EXTRA_SCHEDULE_ID, scheduleId)
+            putExtra(ScheduleNotificationReceiver.EXTRA_RANGE_INDEX, rangeIndex)
+            putExtra(ScheduleNotificationReceiver.EXTRA_END_AT, endAt)
         }
-        return candidate.timeInMillis
+        val pendingIntent = PendingIntent.getBroadcast(
+            context,
+            scheduleEndRequestCode(scheduleId),
+            intent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+        setScheduleAlarm(alarmManager, endAt, pendingIntent)
     }
 
     private fun setScheduleAlarm(
@@ -262,6 +303,9 @@ object ReminderScheduler {
     private fun scheduleCountdownRequestCode(scheduleId: Long): Int =
         SCHEDULE_COUNTDOWN_REQUEST_BASE + (scheduleId.hashCode() and 0x7fffffff) % 100000
 
+    private fun scheduleEndRequestCode(scheduleId: Long): Int =
+        SCHEDULE_END_REQUEST_BASE + (scheduleId.hashCode() and 0x7fffffff) % 100000
+
     private fun taskDeadlinePendingIntent(context: Context, taskId: Long): PendingIntent {
         val intent = Intent(context, DeadlineReceiver::class.java).apply {
             putExtra(DeadlineReceiver.EXTRA_TASK_ID, taskId)
@@ -279,6 +323,7 @@ object ReminderScheduler {
         alarmManager.cancel(scheduleReminderPendingIntent(context, scheduleId, null))
         alarmManager.cancel(scheduleStartPendingIntent(context, scheduleId, null))
         alarmManager.cancel(scheduleCountdownPendingIntent(context, scheduleId))
+        alarmManager.cancel(scheduleEndPendingIntent(context, scheduleId))
     }
 
     private fun scheduleReminderPendingIntent(
@@ -331,6 +376,19 @@ object ReminderScheduler {
         return PendingIntent.getBroadcast(
             context,
             scheduleCountdownRequestCode(scheduleId),
+            intent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+    }
+
+    private fun scheduleEndPendingIntent(context: Context, scheduleId: Long): PendingIntent {
+        val intent = Intent(context, ScheduleNotificationReceiver::class.java).apply {
+            action = ScheduleNotificationReceiver.ACTION_SCHEDULE_END
+            putExtra(ScheduleNotificationReceiver.EXTRA_SCHEDULE_ID, scheduleId)
+        }
+        return PendingIntent.getBroadcast(
+            context,
+            scheduleEndRequestCode(scheduleId),
             intent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
