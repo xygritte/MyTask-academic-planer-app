@@ -50,6 +50,11 @@ class ScheduleNotificationReceiver : BroadcastReceiver() {
 
                     when (intent.action) {
                         ACTION_SCHEDULE_START -> {
+                            ReminderScheduler.scheduleNextScheduleReminder(
+                                context.applicationContext,
+                                schedule
+                            )
+
                             if (!notificationsEnabled) {
                                 NotificationHelper.cancelScheduleNotification(
                                     context.applicationContext,
@@ -63,10 +68,9 @@ class ScheduleNotificationReceiver : BroadcastReceiver() {
                                 val rangeIndex = intent.getIntExtra(EXTRA_RANGE_INDEX, -1)
                                 val ranges = schedule.getTimeRanges().sortedBy { it.startMinutes }
                                 val range = ranges.getOrNull(rangeIndex)
-                                    ?: ScheduleRangeResolver.resolve(schedule)?.range
                                 val resolved = ScheduleRangeResolver.resolve(schedule)
 
-                                if (range != null && resolved != null) {
+                                if (range != null && resolved?.state == ScheduleRangeResolver.State.ACTIVE) {
                                     NotificationHelper.showScheduleNotification(
                                         context.applicationContext,
                                         scheduleId.toString(),
@@ -87,10 +91,6 @@ class ScheduleNotificationReceiver : BroadcastReceiver() {
                                 }
                             }
 
-                            ReminderScheduler.scheduleNextScheduleReminder(
-                                context.applicationContext,
-                                schedule
-                            )
                             AppDebugLog.d(
                                 "NOTIFICATION",
                                 "schedule range started scheduleId=$scheduleId rangeIndex=${intent.getIntExtra(EXTRA_RANGE_INDEX, -1)} enabled=$notificationsEnabled"
