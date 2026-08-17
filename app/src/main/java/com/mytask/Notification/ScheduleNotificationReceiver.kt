@@ -125,13 +125,13 @@ class ScheduleNotificationReceiver : BroadcastReceiver() {
                                 if (schedule.room.isNotBlank()) {
                                     append("\nRuangan: ").append(schedule.room)
                                 }
-                                append("\n\nWaktu berjalan live sampai kuliah dimulai.")
+                                append("\n\nTap untuk melihat jadwal")
                             }
 
                             NotificationHelper.showScheduleNotification(
                                 context.applicationContext,
                                 schedule.id.toString(),
-                                "🕒 Kuliah yang akan datang",
+                                "🕒 Jadwal yang akan datang",
                                 message,
                                 countdownUntilMillis = startAt
                             )
