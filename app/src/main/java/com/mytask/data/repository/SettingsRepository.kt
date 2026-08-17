@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.intPreferencesKey
+import androidx.datastore.preferences.core.stringSetPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.Flow
@@ -21,92 +22,49 @@ class SettingsRepository @Inject constructor(
 ) {
 
     companion object {
-
-        /**
-         * Berapa hari sebelum deadline
-         * notifikasi permanen mulai muncul.
-         *
-         * Contoh:
-         * 0 = hari deadline
-         * 1 = 1 hari sebelum deadline
-         * 3 = 3 hari sebelum deadline
-         */
-        private val TASK_REMINDER_DAYS =
-            intPreferencesKey(
-                "task_reminder_days"
-            )
-
-        /**
-         * Menentukan apakah notifikasi
-         * "Tugas Aktif" diaktifkan.
-         */
-        private val ACTIVE_TASK_NOTIFICATION =
-            booleanPreferencesKey(
-                "active_task_notification"
-            )
+        private val TASK_REMINDER_DAYS = intPreferencesKey("task_reminder_days")
+        private val ACTIVE_TASK_NOTIFICATION = booleanPreferencesKey("active_task_notification")
+        private val DISABLED_SCHEDULE_NOTIFICATIONS = stringSetPreferencesKey("disabled_schedule_notifications")
     }
 
-    /**
-     * Nilai default:
-     * 1 hari sebelum deadline.
-     */
     val taskReminderDays: Flow<Int> =
-        context.settingsDataStore.data.map { preferences ->
+        context.settingsDataStore.data.map { preferences -> preferences[TASK_REMINDER_DAYS] ?: 1 }
 
-            preferences[
-                TASK_REMINDER_DAYS
-            ] ?: 1
-        }
-
-    /**
-     * Nilai default:
-     * true
-     */
     val activeTaskNotification: Flow<Boolean> =
-        context.settingsDataStore.data.map { preferences ->
+        context.settingsDataStore.data.map { preferences -> preferences[ACTIVE_TASK_NOTIFICATION] ?: true }
 
-            preferences[
-                ACTIVE_TASK_NOTIFICATION
-            ] ?: true
+    fun scheduleNotificationEnabled(scheduleId: Long): Flow<Boolean> =
+        context.settingsDataStore.data.map { preferences ->
+            scheduleId.toString() !in (preferences[DISABLED_SCHEDULE_NOTIFICATIONS] ?: emptySet())
         }
 
-    /**
-     * Mengatur berapa hari sebelum deadline
-     * notifikasi permanen mulai muncul.
-     *
-     * Rentang:
-     * 0 sampai 30 hari.
-     */
-    suspend fun setTaskReminderDays(
-        days: Int
-    ) {
+    fun disabledScheduleNotificationIds(): Flow<Set<Long>> =
+        context.settingsDataStore.data.map { preferences ->
+            (preferences[DISABLED_SCHEDULE_NOTIFICATIONS] ?: emptySet())
+                .mapNotNull { it.toLongOrNull() }
+                .toSet()
+        }
 
+    suspend fun setTaskReminderDays(days: Int) {
         context.settingsDataStore.edit { preferences ->
-
-            preferences[
-                TASK_REMINDER_DAYS
-            ] =
-                days.coerceIn(
-                    0,
-                    30
-                )
+            preferences[TASK_REMINDER_DAYS] = days.coerceIn(0, 30)
         }
     }
 
-    /**
-     * Mengaktifkan / menonaktifkan
-     * notifikasi "Tugas Aktif".
-     */
-    suspend fun setActiveTaskNotification(
-        enabled: Boolean
-    ) {
-
+    suspend fun setActiveTaskNotification(enabled: Boolean) {
         context.settingsDataStore.edit { preferences ->
+            preferences[ACTIVE_TASK_NOTIFICATION] = enabled
+        }
+    }
 
-            preferences[
-                ACTIVE_TASK_NOTIFICATION
-            ] =
-                enabled
+    suspend fun setScheduleNotificationEnabled(scheduleId: Long, enabled: Boolean) {
+        context.settingsDataStore.edit { preferences ->
+            val disabled = (preferences[DISABLED_SCHEDULE_NOTIFICATIONS] ?: emptySet()).toMutableSet()
+            if (enabled) disabled.remove(scheduleId.toString())
+            else disabled.add(scheduleId.toString())
+
+            if (disabled.isEmpty()) preferences.remove(DISABLED_SCHEDULE_NOTIFICATIONS)
+            else preferences[DISABLED_SCHEDULE_NOTIFICATIONS] = disabled
         }
     }
 }
