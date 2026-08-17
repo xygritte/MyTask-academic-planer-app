@@ -59,8 +59,8 @@ class DashboardViewModel @Inject constructor(
     val schedules: StateFlow<List<ScheduleEntity>> =
         combine(rawSchedules, minuteTicker) { schedules, nowMillis ->
             val now = java.util.Calendar.getInstance().apply { timeInMillis = nowMillis }
-            val nowMinutes = get(java.util.Calendar.HOUR_OF_DAY) * 60 +
-                    get(java.util.Calendar.MINUTE)
+            val nowMinutes = now.get(java.util.Calendar.HOUR_OF_DAY) * 60 +
+                    now.get(java.util.Calendar.MINUTE)
             schedules.map { it.withDashboardTimeRange(nowMinutes) }
         }.stateIn(
             viewModelScope,
