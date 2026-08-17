@@ -29,49 +29,33 @@ object NotificationHelper {
 
     fun createChannels(context: Context) {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
-
         val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-
         val taskChannel = NotificationChannel(
             TASK_CHANNEL_ID,
             "Pengingat Tugas",
             NotificationManager.IMPORTANCE_HIGH
-        ).apply {
-            description = "Pengingat tugas"
-        }
-
+        ).apply { description = "Pengingat tugas" }
         val scheduleChannel = NotificationChannel(
             SCHEDULE_CHANNEL_ID,
             "Jadwal Kuliah",
             NotificationManager.IMPORTANCE_HIGH
-        ).apply {
-            description = "Pengingat jadwal kuliah dua jam sebelum dimulai"
-        }
-
+        ).apply { description = "Pengingat jadwal kuliah dua jam sebelum dimulai" }
         manager.createNotificationChannel(taskChannel)
         manager.createNotificationChannel(scheduleChannel)
         AppDebugLog.d("NOTIFICATION", "channels ready")
     }
 
     fun showActiveTasksNotification(context: Context, message: String) {
-        if (!canNotify(context)) {
-            AppDebugLog.d("NOTIFICATION", "active task notification skipped: permission/setting disabled")
-            return
-        }
-
+        if (!canNotify(context)) return
         createChannels(context)
         val intent = Intent(context, MainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
         }
         val pendingIntent = PendingIntent.getActivity(
-            context,
-            ACTIVE_TASKS_NOTIFICATION_ID,
-            intent,
+            context, ACTIVE_TASKS_NOTIFICATION_ID, intent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
-
-        val notification = NotificationCompat
-            .Builder(context, TASK_CHANNEL_ID)
+        val notification = NotificationCompat.Builder(context, TASK_CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_notification)
             .setContentTitle("Tugas Aktif")
             .setContentText(message)
@@ -82,7 +66,6 @@ object NotificationHelper {
             .setOngoing(false)
             .setOnlyAlertOnce(true)
             .build()
-
         NotificationManagerCompat.from(context).notify(ACTIVE_TASKS_NOTIFICATION_ID, notification)
         AppDebugLog.d("NOTIFICATION", "posted active-task notification")
     }
@@ -97,22 +80,13 @@ object NotificationHelper {
     }
 
     fun showOverdueTaskNotification(
-        context: Context,
-        taskId: String,
-        deadlineMillis: Long,
-        title: String,
-        message: String
+        context: Context, taskId: String, deadlineMillis: Long, title: String, message: String
     ): Boolean {
-        if (!canNotify(context)) {
-            AppDebugLog.d("NOTIFICATION", "overdue notification skipped taskId=$taskId permission/setting disabled")
-            return false
-        }
-
+        if (!canNotify(context)) return false
         val notificationId = taskNotificationId(taskId)
         val alreadyShown = hasShownOverdueNotification(context, taskId, deadlineMillis)
         val currentlyPosted = isNotificationActive(context, notificationId)
         if (alreadyShown && currentlyPosted) return false
-
         showTaskNotificationInternal(context, taskId, title, message, overdue = true)
         markOverdueNotificationShown(context, taskId, deadlineMillis)
         return true
@@ -120,35 +94,23 @@ object NotificationHelper {
 
     fun clearOverdueNotificationState(context: Context, taskId: String) {
         context.getSharedPreferences(OVERDUE_STATE_PREFS, Context.MODE_PRIVATE)
-            .edit()
-            .remove(overdueStateKey(taskId))
-            .apply()
-        AppDebugLog.d("NOTIFICATION", "cleared overdue notification state taskId=$taskId")
+            .edit().remove(overdueStateKey(taskId)).apply()
     }
 
     private fun showTaskNotificationInternal(
-        context: Context,
-        taskId: String,
-        title: String,
-        message: String,
-        overdue: Boolean
+        context: Context, taskId: String, title: String, message: String, overdue: Boolean
     ) {
         if (!canNotify(context)) return
-
         createChannels(context)
         val notificationId = taskNotificationId(taskId)
         val intent = Intent(context, MainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
         }
         val pendingIntent = PendingIntent.getActivity(
-            context,
-            notificationId,
-            intent,
+            context, notificationId, intent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
-
-        val builder = NotificationCompat
-            .Builder(context, TASK_CHANNEL_ID)
+        val builder = NotificationCompat.Builder(context, TASK_CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_notification)
             .setContentTitle(title)
             .setContentText(message)
@@ -159,21 +121,20 @@ object NotificationHelper {
             .setOngoing(true)
             .setOnlyAlertOnce(true)
             .setCategory(if (overdue) NotificationCompat.CATEGORY_ALARM else NotificationCompat.CATEGORY_REMINDER)
-
         NotificationManagerCompat.from(context).notify(notificationId, builder.build())
         AppDebugLog.d("NOTIFICATION", "posted task notification taskId=$taskId overdue=$overdue notificationId=$notificationId")
     }
 
     fun cancelTaskNotification(context: Context, taskId: String) {
         NotificationManagerCompat.from(context).cancel(taskNotificationId(taskId))
-        AppDebugLog.d("NOTIFICATION", "cancelled task notification taskId=$taskId")
     }
 
     fun showScheduleNotification(
         context: Context,
         scheduleId: String,
         title: String,
-        message: String
+        message: String,
+        countdownUntilMillis: Long? = null
     ) {
         if (!canNotify(context)) {
             AppDebugLog.d("NOTIFICATION", "schedule notification skipped scheduleId=$scheduleId permission/setting disabled")
@@ -186,14 +147,11 @@ object NotificationHelper {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
         }
         val pendingIntent = PendingIntent.getActivity(
-            context,
-            notificationId,
-            intent,
+            context, notificationId, intent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
-        val notification = NotificationCompat
-            .Builder(context, SCHEDULE_CHANNEL_ID)
+        val builder = NotificationCompat.Builder(context, SCHEDULE_CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_notification)
             .setContentTitle(title)
             .setContentText(message)
@@ -204,10 +162,19 @@ object NotificationHelper {
             .setOngoing(true)
             .setOnlyAlertOnce(true)
             .setCategory(NotificationCompat.CATEGORY_REMINDER)
-            .build()
 
-        NotificationManagerCompat.from(context).notify(notificationId, notification)
-        AppDebugLog.d("NOTIFICATION", "posted schedule notification scheduleId=$scheduleId notificationId=$notificationId")
+        if (countdownUntilMillis != null && countdownUntilMillis > System.currentTimeMillis()) {
+            builder
+                .setWhen(countdownUntilMillis)
+                .setUsesChronometer(true)
+                .setChronometerCountDown(true)
+        }
+
+        NotificationManagerCompat.from(context).notify(notificationId, builder.build())
+        AppDebugLog.d(
+            "NOTIFICATION",
+            "posted schedule notification scheduleId=$scheduleId notificationId=$notificationId countdownUntil=$countdownUntilMillis"
+        )
     }
 
     fun cancelScheduleNotification(context: Context, scheduleId: String) {
@@ -217,20 +184,15 @@ object NotificationHelper {
 
     fun cancelAllAppNotifications(context: Context) {
         NotificationManagerCompat.from(context).cancelAll()
-        AppDebugLog.d("NOTIFICATION", "cancelled all app notifications")
     }
 
-    private fun hasShownOverdueNotification(context: Context, taskId: String, deadlineMillis: Long): Boolean {
-        val stored = context.getSharedPreferences(OVERDUE_STATE_PREFS, Context.MODE_PRIVATE)
-            .getLong(overdueStateKey(taskId), Long.MIN_VALUE)
-        return stored == deadlineMillis
-    }
+    private fun hasShownOverdueNotification(context: Context, taskId: String, deadlineMillis: Long): Boolean =
+        context.getSharedPreferences(OVERDUE_STATE_PREFS, Context.MODE_PRIVATE)
+            .getLong(overdueStateKey(taskId), Long.MIN_VALUE) == deadlineMillis
 
     private fun markOverdueNotificationShown(context: Context, taskId: String, deadlineMillis: Long) {
         context.getSharedPreferences(OVERDUE_STATE_PREFS, Context.MODE_PRIVATE)
-            .edit()
-            .putLong(overdueStateKey(taskId), deadlineMillis)
-            .apply()
+            .edit().putLong(overdueStateKey(taskId), deadlineMillis).apply()
     }
 
     private fun overdueStateKey(taskId: String): String = "$OVERDUE_STATE_PREFIX$taskId"
@@ -241,18 +203,13 @@ object NotificationHelper {
         return manager.activeNotifications.any { it.id == notificationId }
     }
 
-    private fun taskNotificationId(taskId: String): Int =
-        TASK_NOTIFICATION_ID_BASE + (abs(taskId.hashCode()) % 100000)
-
-    private fun scheduleNotificationId(scheduleId: String): Int =
-        SCHEDULE_NOTIFICATION_ID_BASE + (abs(scheduleId.hashCode()) % 100000)
+    private fun taskNotificationId(taskId: String): Int = TASK_NOTIFICATION_ID_BASE + (abs(taskId.hashCode()) % 100000)
+    private fun scheduleNotificationId(scheduleId: String): Int = SCHEDULE_NOTIFICATION_ID_BASE + (abs(scheduleId.hashCode()) % 100000)
 
     private fun canNotify(context: Context): Boolean {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            if (ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
-                return false
-            }
-        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+            ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
+        ) return false
         return NotificationManagerCompat.from(context).areNotificationsEnabled()
     }
 }
