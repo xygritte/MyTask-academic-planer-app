@@ -35,7 +35,7 @@ import javax.inject.Inject
 import javax.inject.Singleton
 
 class CloudSyncConflictException(
-    message: String = "Data online berubah dari perangkat lain. Sinkronkan ulang sebelum menyimpan perubahan."
+    message: String = "Data online berubah dari perangkat lain."
 ) : IllegalStateException(message)
 
 @Singleton
@@ -48,6 +48,7 @@ class CloudDataSyncRepository @Inject constructor(
 
     private companion object {
         const val CLOUD_TIMEOUT_MS = 15_000L
+        const val MAX_CONFLICT_BACKUPS = 3
     }
 
     private fun document(uid: String) =
@@ -90,10 +91,6 @@ class CloudDataSyncRepository @Inject constructor(
         }
     }
 
-    /**
-     * Replaces the local workspace with the current cloud snapshot without signing the user out.
-     * This is intentionally separate from syncOnLogin so conflict recovery cannot destroy the session.
-     */
     suspend fun resyncFromCloud(uid: String): Boolean {
         require(uid.isNotBlank())
         if (!isNetworkAvailable()) {
@@ -161,13 +158,29 @@ class CloudDataSyncRepository @Inject constructor(
             userProfileRepository.saveCloudSyncState(newUpdatedAt, dataHash)
             AuthDebugLog.d("CLOUD_UPLOAD success: uid=${AuthDebugLog.uid(uid)} updatedAt=$newUpdatedAt")
         } catch (error: Throwable) {
+            if (error is CloudSyncConflictException) {
+                // Never discard the user's unsynced local workspace. Keep a rolling internal
+                // conflict backup, then recover the workspace from the authoritative cloud snapshot.
+                saveConflictBackup(uid, json)
+                try {
+                    resyncFromCloud(uid)
+                } catch (resyncError: Throwable) {
+                    AuthDebugLog.e("CLOUD_CONFLICT recovery failed: uid=${AuthDebugLog.uid(uid)}", resyncError)
+                    throw CloudSyncConflictException(
+                        "Data online berubah dan sinkronisasi otomatis gagal. Data lokal tetap dipertahankan."
+                    )
+                }
+
+                throw CloudSyncConflictException(
+                    "Data online berubah. Workspace sudah disinkronkan ke versi online terbaru; perubahan lokal sebelum konflik disimpan sebagai cadangan internal."
+                )
+            }
+
             val message = when (error) {
-                is CloudSyncConflictException -> error.message ?: "Cloud data conflict."
                 is TimeoutCancellationException -> "Cloud upload timed out after ${CLOUD_TIMEOUT_MS / 1000}s."
                 else -> error.message ?: "Cloud upload failed."
             }
             AuthDebugLog.e("CLOUD_UPLOAD failed: uid=${AuthDebugLog.uid(uid)} ${error::class.simpleName}: $message", error)
-            if (error is CloudSyncConflictException) throw error
             if (error is TimeoutCancellationException) throw IllegalStateException(message, error)
             throw error
         }
@@ -203,7 +216,6 @@ class CloudDataSyncRepository @Inject constructor(
             NotificationHelper.cancelAllAppNotifications(context)
             ReminderScheduler.cancel(context)
             ReminderScheduler.initialize(context)
-            AuthDebugLog.d("CLOUD_RESTORE no cloud data: uid=${AuthDebugLog.uid(uid)}")
             return false
         }
 
@@ -213,8 +225,18 @@ class CloudDataSyncRepository @Inject constructor(
         NotificationHelper.cancelAllAppNotifications(context)
         ReminderScheduler.cancel(context)
         ReminderScheduler.initialize(context)
-        AuthDebugLog.d("CLOUD_RESTORE success: uid=${AuthDebugLog.uid(uid)} updatedAt=$cloudUpdatedAt jsonLength=${cloudJson.length}")
         return true
+    }
+
+    private fun saveConflictBackup(uid: String, json: String) {
+        val safeUid = uid.replace(Regex("[^A-Za-z0-9._-]"), "_")
+        val file = File(context.filesDir, "mytask_conflict_${safeUid}_${System.currentTimeMillis()}.json")
+        runCatching { file.writeText(json, Charsets.UTF_8) }
+        context.filesDir.listFiles()
+            ?.filter { it.name.startsWith("mytask_conflict_${safeUid}_") && it.name.endsWith(".json") }
+            ?.sortedByDescending { it.lastModified() }
+            ?.drop(MAX_CONFLICT_BACKUPS)
+            ?.forEach { old -> runCatching { old.delete() } }
     }
 
     private suspend fun replaceLocalDatabase(json: String) {
