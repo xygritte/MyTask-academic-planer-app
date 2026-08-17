@@ -107,9 +107,6 @@ class FirebaseAuthRepository @Inject constructor(
                 ?: error("Akun tidak ditemukan.")
 
             val fallback = firebaseFallbackProfile(user)
-
-            // Firebase Auth state changes can cancel the Compose caller. Profile restore must
-            // survive that cancellation so a valid cloud program is not replaced by the default.
             val profile = withContext(NonCancellable) {
                 userProfileRepository.saveAuthenticatedSession(user.uid, fallback.name, fallback.program)
                 try {
@@ -169,8 +166,6 @@ class FirebaseAuthRepository @Inject constructor(
                     }
                 } catch (error: Throwable) {
                     AuthDebugLog.e("GOOGLE_LOGIN Firestore profile load failed; using fallback", error)
-                    // Only create a cloud profile when the account truly has no profile document.
-                    // A cancelled composition must never overwrite an existing cloud program.
                     val existing = runCatching { firestore.collection("users").document(user.uid).get().await() }
                         .getOrNull()
                     if (existing?.exists() == true) {
@@ -263,6 +258,12 @@ class FirebaseAuthRepository @Inject constructor(
 
     suspend fun clearLocalSession() {
         AuthDebugLog.d("LOGOUT start: currentUid=${AuthDebugLog.uid(auth.currentUser?.uid)}")
+        val user = auth.currentUser
+        if (user != null) {
+            // Persist the latest local Room snapshot before it is destroyed. The next login
+            // restores this snapshot, so local edits cannot disappear during logout/login.
+            cloudDataSyncRepository.uploadCurrentData(user.uid)
+        }
         cloudDataSyncRepository.clearLocalSessionData()
         withContext(NonCancellable) { userProfileRepository.clearProfile() }
         auth.signOut()
