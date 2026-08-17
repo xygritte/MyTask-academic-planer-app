@@ -42,8 +42,12 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableLongStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -52,9 +56,11 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.mytask.R
+import com.mytask.data.local.ScheduleRangeResolver
 import com.mytask.data.local.entity.CourseEntity
 import com.mytask.data.local.entity.ScheduleEntity
 import com.mytask.data.local.entity.TaskEntity
+import kotlinx.coroutines.delay
 import java.util.Calendar
 import java.util.concurrent.TimeUnit
 
@@ -75,6 +81,15 @@ fun DashboardScreen(
 
     val disabledScheduleNotificationIds by
     viewModel.disabledScheduleNotificationIds.collectAsState()
+
+    var nowMillis by remember { mutableLongStateOf(System.currentTimeMillis()) }
+
+    LaunchedEffect(Unit) {
+        while (true) {
+            delay(1_000L)
+            nowMillis = System.currentTimeMillis()
+        }
+    }
 
     val today = Calendar.getInstance().get(Calendar.DAY_OF_WEEK)
 
@@ -246,6 +261,7 @@ fun DashboardScreen(
                     courses = courses,
                     disabledScheduleNotificationIds =
                         disabledScheduleNotificationIds,
+                    nowMillis = nowMillis,
                     onNotificationToggle =
                         viewModel::setScheduleNotificationEnabled,
                     onClick = onScheduleClick
@@ -509,6 +525,7 @@ private fun TodayScheduleCard(
     schedules: List<ScheduleEntity>,
     courses: List<CourseEntity>,
     disabledScheduleNotificationIds: Set<Long>,
+    nowMillis: Long,
     onNotificationToggle: (ScheduleEntity, Boolean) -> Unit,
     onClick: () -> Unit
 ) {
@@ -574,11 +591,14 @@ private fun TodayScheduleCard(
 
                     val notificationsDisabled =
                         schedule.id in disabledScheduleNotificationIds
+                    val resolved = ScheduleRangeResolver.resolve(schedule, nowMillis)
 
                     TodayScheduleRow(
                         schedule = schedule,
                         courseName = course?.name ?: "Mata Kuliah",
                         notificationsDisabled = notificationsDisabled,
+                        resolved = resolved,
+                        nowMillis = nowMillis,
                         onNotificationToggle = { checked ->
                             // checked = true berarti notifikasi dimatikan
                             onNotificationToggle(
@@ -611,9 +631,24 @@ private fun TodayScheduleRow(
     schedule: ScheduleEntity,
     courseName: String,
     notificationsDisabled: Boolean,
+    resolved: ScheduleRangeResolver.ResolvedRange?,
+    nowMillis: Long,
     onNotificationToggle: (Boolean) -> Unit,
     onClick: () -> Unit
 ) {
+    val displayStart = resolved?.range?.startMinutes ?: schedule.startMinutes
+    val displayEnd = resolved?.range?.endMinutes ?: schedule.endMinutes
+
+    val statusText = when (resolved?.state) {
+        ScheduleRangeResolver.State.ACTIVE ->
+            "Sedang berlangsung · ${formatDuration(resolved.endAt - nowMillis)}"
+        ScheduleRangeResolver.State.NEXT ->
+            "Mulai dalam ${formatDuration(resolved.startAt - nowMillis)}"
+        ScheduleRangeResolver.State.FINISHED ->
+            "Selesai hari ini"
+        null -> null
+    }
+
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -637,13 +672,13 @@ private fun TodayScheduleRow(
                 modifier = Modifier.width(68.dp)
             ) {
                 Text(
-                    text = formatScheduleTime(schedule.startMinutes),
+                    text = formatScheduleTime(displayStart),
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold
                 )
 
                 Text(
-                    text = formatScheduleTime(schedule.endMinutes),
+                    text = formatScheduleTime(displayEnd),
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -654,10 +689,10 @@ private fun TodayScheduleRow(
             Surface(
                 modifier = Modifier.size(8.dp),
                 shape = CircleShape,
-                color = if (notificationsDisabled) {
-                    MaterialTheme.colorScheme.outline
-                } else {
-                    MaterialTheme.colorScheme.primary
+                color = when {
+                    notificationsDisabled -> MaterialTheme.colorScheme.outline
+                    resolved?.state == ScheduleRangeResolver.State.ACTIVE -> MaterialTheme.colorScheme.primary
+                    else -> MaterialTheme.colorScheme.secondary
                 }
             ) {}
 
@@ -677,6 +712,24 @@ private fun TodayScheduleRow(
                         text = schedule.room,
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+
+                if (statusText != null) {
+                    Spacer(Modifier.height(2.dp))
+                    Text(
+                        text = statusText,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = when (resolved?.state) {
+                            ScheduleRangeResolver.State.ACTIVE -> MaterialTheme.colorScheme.primary
+                            ScheduleRangeResolver.State.NEXT -> MaterialTheme.colorScheme.onSurfaceVariant
+                            else -> MaterialTheme.colorScheme.outline
+                        },
+                        fontWeight = if (resolved?.state == ScheduleRangeResolver.State.ACTIVE) {
+                            FontWeight.SemiBold
+                        } else {
+                            FontWeight.Normal
+                        }
                     )
                 }
             }
@@ -845,6 +898,19 @@ private fun formatScheduleTime(totalMinutes: Int): String {
     val minute = safeMinutes % 60
 
     return "%02d:%02d".format(hour, minute)
+}
+
+private fun formatDuration(durationMillis: Long): String {
+    val safeSeconds = (durationMillis.coerceAtLeast(0L) / 1000L)
+    val hours = safeSeconds / 3600L
+    val minutes = (safeSeconds % 3600L) / 60L
+    val seconds = safeSeconds % 60L
+
+    return if (hours > 0L) {
+        "%02d:%02d:%02d".format(hours, minutes, seconds)
+    } else {
+        "%02d:%02d".format(minutes, seconds)
+    }
 }
 
 private fun isOverdue(deadline: java.util.Date): Boolean {
