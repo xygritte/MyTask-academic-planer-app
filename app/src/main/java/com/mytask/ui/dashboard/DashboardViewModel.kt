@@ -1,68 +1,60 @@
 package com.mytask.ui.dashboard
 
+import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.mytask.Notification.ReminderScheduler
 import com.mytask.data.local.entity.CourseEntity
 import com.mytask.data.local.entity.ScheduleEntity
 import com.mytask.data.local.entity.TaskEntity
 import com.mytask.data.repository.CourseRepository
 import com.mytask.data.repository.ScheduleRepository
+import com.mytask.data.repository.SettingsRepository
 import com.mytask.data.repository.TaskRepository
+import dagger.hilt.android.qualifiers.ApplicationContext
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.launch
 
 @HiltViewModel
 class DashboardViewModel @Inject constructor(
     courseRepository: CourseRepository,
     taskRepository: TaskRepository,
-    scheduleRepository: ScheduleRepository
+    scheduleRepository: ScheduleRepository,
+    private val settingsRepository: SettingsRepository,
+    @ApplicationContext private val context: Context
 ) : ViewModel() {
 
     val courseCount: StateFlow<Int> =
-        courseRepository
-            .getCourseCount()
-            .stateIn(
-                viewModelScope,
-                SharingStarted.WhileSubscribed(5000),
-                0
-            )
+        courseRepository.getCourseCount().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)
 
     val activeTaskCount: StateFlow<Int> =
-        taskRepository
-            .getActiveTaskCount()
-            .stateIn(
-                viewModelScope,
-                SharingStarted.WhileSubscribed(5000),
-                0
-            )
+        taskRepository.getActiveTaskCount().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)
 
     val courses: StateFlow<List<CourseEntity>> =
-        courseRepository
-            .getAllCourses()
-            .stateIn(
-                viewModelScope,
-                SharingStarted.WhileSubscribed(5000),
-                emptyList()
-            )
+        courseRepository.getAllCourses().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     val tasks: StateFlow<List<TaskEntity>> =
-        taskRepository
-            .getAllTasks()
-            .stateIn(
-                viewModelScope,
-                SharingStarted.WhileSubscribed(5000),
-                emptyList()
-            )
+        taskRepository.getAllTasks().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     val schedules: StateFlow<List<ScheduleEntity>> =
-        scheduleRepository
-            .getAllSchedules()
-            .stateIn(
-                viewModelScope,
-                SharingStarted.WhileSubscribed(5000),
-                emptyList()
-            )
+        scheduleRepository.getAllSchedules().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    val disabledScheduleNotificationIds: StateFlow<Set<Long>> =
+        settingsRepository.disabledScheduleNotificationIds()
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptySet())
+
+    fun setScheduleNotificationEnabled(schedule: ScheduleEntity, enabled: Boolean) {
+        viewModelScope.launch {
+            settingsRepository.setScheduleNotificationEnabled(schedule.id, enabled)
+            if (enabled) {
+                ReminderScheduler.scheduleScheduleReminder(context, schedule)
+            } else {
+                ReminderScheduler.cancelScheduleReminder(context, schedule.id)
+            }
+        }
+    }
 }
