@@ -2,13 +2,18 @@ package com.mytask.data.repository
 
 import android.content.Context
 import androidx.room.withTransaction
+import com.mytask.Notification.ReminderScheduler
 import com.mytask.data.local.MyTaskDatabase
+import com.mytask.data.local.ScheduleTimeRange
 import com.mytask.data.local.entity.CourseEntity
 import com.mytask.data.local.entity.ScheduleEntity
 import com.mytask.data.local.entity.TaskEntity
+import com.mytask.data.local.toJsonString
 import com.mytask.data.local.toMinuteOfDayOrNull
+import com.mytask.data.local.toScheduleTimeRangesOrNull
 import com.mytask.debug.AppDebugLog
 import dagger.hilt.android.qualifiers.ApplicationContext
+import org.json.JSONArray
 import org.json.JSONObject
 import java.util.Calendar
 import java.util.Date
@@ -85,25 +90,76 @@ class TemplateDataImporter @Inject constructor(
                 val courseTemplateId = item.optLong("courseId", -1L)
                 val courseName = templateCourseNames[courseTemplateId]
                 val actualCourseId = courseName?.let { courseIdByName[it] }
-                val startMinutes = item.optInt("startMinutes", -1).takeIf { it >= 0 }
-                    ?: item.optString("startTime").toMinuteOfDayOrNull()
-                    ?: 0
-                val endMinutes = item.optInt("endMinutes", -1).takeIf { it >= 0 }
-                    ?: item.optString("endTime").toMinuteOfDayOrNull()
-                    ?: startMinutes
 
+                val legacyStart = item.optString("startTime", "")
+                val legacyEnd = item.optString("endTime", "")
+                val legacyStartMinutes = if (item.has("startMinutes")) {
+                    item.optInt("startMinutes")
+                } else {
+                    legacyStart.toMinuteOfDayOrNull() ?: -1
+                }
+                val legacyEndMinutes = if (item.has("endMinutes")) {
+                    item.optInt("endMinutes")
+                } else {
+                    legacyEnd.toMinuteOfDayOrNull() ?: -1
+                }
+
+                val ranges = when {
+                    item.has("timeRanges") -> {
+                        when (val value = item.get("timeRanges")) {
+                            is JSONArray -> buildList {
+                                for (rangeIndex in 0 until value.length()) {
+                                    ScheduleTimeRange.fromJson(value.getJSONObject(rangeIndex))?.let(::add)
+                                }
+                            }
+                            is String -> value.toScheduleTimeRangesOrNull() ?: emptyList()
+                            else -> emptyList()
+                        }
+                    }
+                    else -> emptyList()
+                }
+
+                val sortedRanges = if (ranges.isNotEmpty()) {
+                    ranges.sortedBy { it.startMinutes }
+                } else if (
+                    legacyStartMinutes in 0..1439 &&
+                    legacyEndMinutes in 0..1439 &&
+                    legacyEndMinutes > legacyStartMinutes
+                ) {
+                    listOf(ScheduleTimeRange(legacyStartMinutes, legacyEndMinutes))
+                } else {
+                    emptyList()
+                }
+
+                require(sortedRanges.isNotEmpty()) {
+                    "Template memiliki jadwal dengan rentang waktu tidak valid pada index $index."
+                }
+
+                for (rangeIndex in 0 until sortedRanges.lastIndex) {
+                    require(sortedRanges[rangeIndex + 1].startMinutes >= sortedRanges[rangeIndex].endMinutes) {
+                        "Template memiliki rentang jadwal yang bertabrakan pada index $index."
+                    }
+                }
+
+                val firstRange = sortedRanges.first()
                 schedules += ScheduleEntity(
                     courseId = actualCourseId,
-                    dayOfWeek = item.getInt("dayOfWeek"),
-                    startMinutes = startMinutes.coerceIn(0, 1439),
-                    endMinutes = endMinutes.coerceIn(0, 1439),
-                    room = item.optString("room")
+                    dayOfWeek = item.getInt("dayOfWeek").coerceIn(0, 7),
+                    startMinutes = firstRange.startMinutes,
+                    endMinutes = firstRange.endMinutes,
+                    room = item.optString("room"),
+                    timeRangesJson = sortedRanges.toJsonString()
                 )
             }
 
             if (schedules.isNotEmpty()) database.scheduleDao().insertAll(schedules)
             AppDebugLog.d("TEMPLATE", "import completed courses=${courseArray.length()} tasks=${taskArray.length()} schedules=${scheduleArray.length()}")
         }
+
+        // Template import changes Room data after the normal ViewModel save path, so explicitly
+        // rebuild deadline/schedule alarms for the newly imported records.
+        ReminderScheduler.syncToday(context)
+        ReminderScheduler.rescheduleAllStoredScheduleReminders(context)
     }
 
     private fun buildDeadline(offsetDays: Int): Date {
