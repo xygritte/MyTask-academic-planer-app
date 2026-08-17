@@ -109,6 +109,6 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: MyTask-release-apk
-          path: app/build/outputs/release/*.apk
+          path: app/build/outputs/apk/release/*.apk
           if-no-files-found: error
           retention-days: 7
