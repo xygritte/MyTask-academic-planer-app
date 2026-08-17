@@ -28,40 +28,49 @@ class TemplateCatalog @Inject constructor(
 ) {
     val templates: List<AppTemplate> = listOf(
         AppTemplate(
-            id = "universal_academic_starter",
-            version = 1,
-            name = "Academic Starter",
-            description = "Data awal perkuliahan untuk memulai semester.",
-            category = "Akademik",
-            icon = "📚",
-            assetName = "template_academic.json"
-        ),
-        AppTemplate(
-            id = "daily_life_starter",
+            id = "belajar_pengembangan",
             version = 3,
-            name = "Daily Life Starter",
-            description = "Contoh kegiatan harian, ibadah, hubungan, produktivitas, dan musik dengan jadwal siap pakai.",
-            category = "Kegiatan Harian",
-            icon = "🌿",
-            assetName = "template_healthy_routine.json"
+            name = "Belajar & Pengembangan",
+            description = "Preset untuk membaca, latihan bahasa, dan menulis jurnal.",
+            category = "Pengembangan Diri",
+            icon = "📚",
+            assetName = "template_belajar_pengembangan.json"
         ),
         AppTemplate(
-            id = "daily_prayer_schedule",
-            version = 1,
-            name = "Waktu Sholat Harian",
-            description = "Rutinitas sholat lima waktu sebagai jadwal harian.",
+            id = "olahraga_kebugaran",
+            version = 3,
+            name = "Olahraga & Kebugaran",
+            description = "Rutinitas lari, latihan kekuatan, dan stretching.",
+            category = "Kesehatan",
+            icon = "🏃",
+            assetName = "template_olahraga_kebugaran.json"
+        ),
+        AppTemplate(
+            id = "ibadah_harian",
+            version = 3,
+            name = "Ibadah Harian",
+            description = "Preset ibadah harian dengan jadwal sholat, membaca Al-Quran, dan dzikir.",
             category = "Ibadah",
             icon = "🕌",
-            assetName = "template_prayer_schedule.json"
+            assetName = "template_ibadah_harian.json"
         ),
         AppTemplate(
-            id = "productive_day",
-            version = 1,
-            name = "Productive Day",
-            description = "Rutinitas fokus, membaca, olahraga, dan refleksi harian.",
-            category = "Produktivitas",
+            id = "produktivitas_harian",
+            version = 3,
+            name = "Produktivitas Harian",
+            description = "Rutinitas makan, olahraga ringan, dan waktu tidur.",
+            category = "Kegiatan Harian",
             icon = "🎯",
-            assetName = "template_productive_day.json"
+            assetName = "template_produktivitas_harian.json"
+        ),
+        AppTemplate(
+            id = "kegiatan_luar_sosial",
+            version = 3,
+            name = "Kegiatan Luar & Sosial",
+            description = "Preset untuk jalan-jalan santai dan kegiatan komunitas.",
+            category = "Sosial & Luar Ruang",
+            icon = "🌳",
+            assetName = "template_kegiatan_luar_sosial.json"
         )
     )
 
