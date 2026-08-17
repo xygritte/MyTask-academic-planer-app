@@ -1,0 +1,14 @@
+{
+  "app": "MyTask",
+  "template": "kegiatan_luar_sosial",
+  "version": 3,
+  "courses": [
+    { "id": 501, "name": "Jalan-jalan Santai", "code": "PRODUKTIVITAS", "lecturer": "", "room": "TAMAN KOTA" },
+    { "id": 503, "name": "Kegiatan Komunitas", "code": "PRODUKTIVITAS", "lecturer": "", "room": "BALAI PERTEMUAN" }
+  ],
+  "tasks": [],
+  "schedules": [
+    { "id": 601, "courseId": 501, "dayOfWeek": 5, "timeRanges": [{ "startMinutes": 420, "endMinutes": 510 }, { "startMinutes": 1020, "endMinutes": 1110 }], "room": "TAMAN KOTA" },
+    { "id": 603, "courseId": 503, "dayOfWeek": 0, "timeRanges": [{ "startMinutes": 540, "endMinutes": 660 }, { "startMinutes": 900, "endMinutes": 1020 }], "room": "BALAI PERTEMUAN" }
+  ]
+}
