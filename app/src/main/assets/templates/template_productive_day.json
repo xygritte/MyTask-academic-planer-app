@@ -1,0 +1,18 @@
+{
+  "app": "MyTask",
+  "template": "productive_day",
+  "version": 1,
+  "courses": [
+    {"id": 3001, "name": "Produktivitas Harian", "code": "PRODUCTIVE", "lecturer": "", "room": ""}
+  ],
+  "tasks": [
+    {"id": 3001, "courseId": 3001, "title": "Rencanakan Hari", "description": "Tentukan tiga prioritas utama hari ini.", "deadlineOffsetDays": 0, "priority": 1, "isCompleted": false},
+    {"id": 3002, "courseId": 3001, "title": "Membaca", "description": "Luangkan waktu untuk membaca dan belajar.", "deadlineOffsetDays": 0, "priority": 2, "isCompleted": false},
+    {"id": 3003, "courseId": 3001, "title": "Refleksi Harian", "description": "Catat apa yang sudah berjalan baik dan apa yang perlu diperbaiki.", "deadlineOffsetDays": 0, "priority": 2, "isCompleted": false}
+  ],
+  "schedules": [
+    {"id": 3001, "courseId": 3001, "dayOfWeek": 0, "timeRanges": [{"startMinutes": 480, "endMinutes": 510}], "room": ""},
+    {"id": 3002, "courseId": 3001, "dayOfWeek": 0, "timeRanges": [{"startMinutes": 900, "endMinutes": 930}], "room": ""},
+    {"id": 3003, "courseId": 3001, "dayOfWeek": 0, "timeRanges": [{"startMinutes": 1260, "endMinutes": 1275}], "room": ""}
+  ]
+}
