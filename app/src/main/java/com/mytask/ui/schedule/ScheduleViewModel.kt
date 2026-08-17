@@ -10,7 +10,7 @@ import com.mytask.data.local.entity.ScheduleEntity
 import com.mytask.data.local.toJsonString
 import com.mytask.data.repository.CourseRepository
 import com.mytask.data.repository.ScheduleRepository
-aimport dagger.hilt.android.qualifiers.ApplicationContext
+import dagger.hilt.android.qualifiers.ApplicationContext
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
 import kotlinx.coroutines.flow.SharingStarted
