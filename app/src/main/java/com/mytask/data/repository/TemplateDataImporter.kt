@@ -13,8 +13,10 @@ class TemplateDataImporter @Inject constructor(
     private val templateApplyRepository: TemplateApplyRepository
 ) {
     suspend fun importTemplate() {
-        val template = TemplateSelectionStore.consume()
-            ?: error("Belum ada template yang dipilih.")
-        templateApplyRepository.apply(template)
+        val selected = TemplateSelectionStore.consumeAll()
+        if (selected.isEmpty()) {
+            error("Belum ada template yang dipilih.")
+        }
+        selected.forEach { templateApplyRepository.apply(it) }
     }
 }
