@@ -5,9 +5,16 @@ import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
 import android.os.Build
+import androidx.room.Room
+import com.mytask.data.local.MyTaskDatabase
 import com.mytask.data.local.entity.ScheduleEntity
 import com.mytask.data.local.entity.TaskEntity
 import com.mytask.debug.AppDebugLog
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
 import java.util.Calendar
 import java.util.Date
 
@@ -74,7 +81,10 @@ object ReminderScheduler {
     }
 
     fun scheduleScheduleReminder(context: Context, schedule: ScheduleEntity) {
-        cancelScheduleReminder(context, schedule.id)
+        // Only replace the alarm here. Do not cancel the currently visible
+        // notification, because the alarm receiver uses this method to queue
+        // next week's occurrence after showing the current notification.
+        cancelScheduleReminderAlarm(context, schedule.id)
 
         val triggerAt = nextScheduleReminderTime(schedule, System.currentTimeMillis())
         if (triggerAt == null) {
@@ -101,7 +111,6 @@ object ReminderScheduler {
                 pendingIntent
             )
         } else {
-            // Fallback when exact-alarm access has not been granted.
             alarmManager.setAndAllowWhileIdle(
                 AlarmManager.RTC_WAKEUP,
                 triggerAt,
@@ -116,14 +125,36 @@ object ReminderScheduler {
     }
 
     fun cancelScheduleReminder(context: Context, scheduleId: Long) {
-        val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
-        alarmManager.cancel(scheduleReminderPendingIntent(context, scheduleId))
+        cancelScheduleReminderAlarm(context, scheduleId)
         NotificationHelper.cancelScheduleNotification(context, scheduleId.toString())
         AppDebugLog.d("NOTIFICATION", "schedule reminder cancelled scheduleId=$scheduleId")
     }
 
     fun rescheduleAllScheduleReminders(context: Context, schedules: List<ScheduleEntity>) {
         schedules.forEach { scheduleScheduleReminder(context, it) }
+    }
+
+    /** Rebuild schedule alarms from the local Room database. */
+    fun rescheduleAllStoredScheduleReminders(context: Context) {
+        CoroutineScope(SupervisorJob() + Dispatchers.IO).launch {
+            val database = Room.databaseBuilder(
+                context.applicationContext,
+                MyTaskDatabase::class.java,
+                "mytask_db"
+            ).build()
+            try {
+                val schedules = database.scheduleDao().getAllSchedulesSnapshot()
+                rescheduleAllScheduleReminders(context.applicationContext, schedules)
+                AppDebugLog.d(
+                    "NOTIFICATION",
+                    "schedule alarms restored from Room count=${schedules.size}"
+                )
+            } catch (error: Throwable) {
+                AppDebugLog.e("NOTIFICATION", "schedule alarms restore failed", error)
+            } finally {
+                database.close()
+            }
+        }
     }
 
     fun scheduleNextScheduleReminder(context: Context, schedule: ScheduleEntity) {
@@ -155,6 +186,7 @@ object ReminderScheduler {
         AppDebugLog.d("NOTIFICATION", "initialize reminder scheduler")
         syncToday(context)
         scheduleNextMidnight(context)
+        rescheduleAllStoredScheduleReminders(context)
     }
 
     fun cancel(context: Context) {
@@ -177,7 +209,6 @@ object ReminderScheduler {
 
         var triggerAt = candidate.timeInMillis - TWO_HOURS_MILLIS
 
-        // If today's two-hour reminder has already passed, move to next week's occurrence.
         if (triggerAt <= now.timeInMillis) {
             candidate.add(Calendar.WEEK_OF_YEAR, 1)
             triggerAt = candidate.timeInMillis - TWO_HOURS_MILLIS
@@ -202,6 +233,11 @@ object ReminderScheduler {
             intent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
+    }
+
+    private fun cancelScheduleReminderAlarm(context: Context, scheduleId: Long) {
+        val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
+        alarmManager.cancel(scheduleReminderPendingIntent(context, scheduleId))
     }
 
     private fun scheduleReminderPendingIntent(context: Context, scheduleId: Long): PendingIntent {
