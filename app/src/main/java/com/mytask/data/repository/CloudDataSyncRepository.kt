@@ -9,11 +9,15 @@ import com.google.firebase.firestore.FirebaseFirestore
 import com.mytask.Notification.NotificationHelper
 import com.mytask.Notification.ReminderScheduler
 import com.mytask.data.local.MyTaskDatabase
+import com.mytask.data.local.ScheduleTimeRange
 import com.mytask.data.local.entity.CourseEntity
 import com.mytask.data.local.entity.ScheduleEntity
 import com.mytask.data.local.entity.TaskEntity
+import com.mytask.data.local.getTimeRanges
 import com.mytask.data.local.toDisplayTime
+import com.mytask.data.local.toJsonString
 import com.mytask.data.local.toMinuteOfDayOrNull
+import com.mytask.data.local.toScheduleTimeRangesOrNull
 import com.mytask.debug.AuthDebugLog
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.TimeoutCancellationException
@@ -43,8 +47,7 @@ class CloudDataSyncRepository @Inject constructor(
     }
 
     private fun document(uid: String) =
-        firestore
-            .collection("users")
+        firestore.collection("users")
             .document(uid)
             .collection("backups")
             .document("academic")
@@ -63,30 +66,21 @@ class CloudDataSyncRepository @Inject constructor(
 
     suspend fun syncOnLogin(uid: String): Boolean {
         require(uid.isNotBlank())
-
         AuthDebugLog.d(
             "CLOUD_RESTORE start: uid=${AuthDebugLog.uid(uid)} online=${isNetworkAvailable()}"
         )
-
         if (!isNetworkAvailable()) {
             AuthDebugLog.d(
                 "CLOUD_RESTORE rejected: device offline during authenticated login uid=${AuthDebugLog.uid(uid)}"
             )
-            throw IllegalStateException(
-                "Login membutuhkan koneksi internet untuk memuat data akun."
-            )
+            throw IllegalStateException("Login membutuhkan koneksi internet untuk memuat data akun.")
         }
 
         return try {
             val snapshot = withTimeout(CLOUD_TIMEOUT_MS) {
-                document(uid)
-                    .get()
-                    .await()
+                document(uid).get().await()
             }
-
-            val cloudJson = snapshot
-                .getString("dataJson")
-                ?.takeIf { it.isNotBlank() }
+            val cloudJson = snapshot.getString("dataJson")?.takeIf { it.isNotBlank() }
 
             if (cloudJson == null) {
                 clearLocalAcademicData()
@@ -110,22 +104,18 @@ class CloudDataSyncRepository @Inject constructor(
             }
         } catch (error: Throwable) {
             val message = when (error) {
-                is TimeoutCancellationException ->
-                    "Cloud restore timed out after ${CLOUD_TIMEOUT_MS / 1000}s."
+                is TimeoutCancellationException -> "Cloud restore timed out after ${CLOUD_TIMEOUT_MS / 1000}s."
                 else -> error.message ?: "Cloud restore failed."
             }
-
             AuthDebugLog.e(
                 "CLOUD_RESTORE failed: uid=${AuthDebugLog.uid(uid)} ${error::class.simpleName}: $message",
                 error
             )
-
             runCatching {
                 clearLocalSessionData()
                 userProfileRepository.clearProfile()
                 FirebaseAuth.getInstance().signOut()
             }
-
             ReminderScheduler.initialize(context)
             throw error
         }
@@ -133,73 +123,46 @@ class CloudDataSyncRepository @Inject constructor(
 
     suspend fun uploadCurrentData(uid: String) {
         require(uid.isNotBlank())
-
         if (!isNetworkAvailable()) {
-            AuthDebugLog.d(
-                "CLOUD_UPLOAD rejected: device offline uid=${AuthDebugLog.uid(uid)}"
-            )
-            throw IllegalStateException(
-                "Tidak ada koneksi internet. Hubungkan internet lalu coba lagi."
-            )
+            AuthDebugLog.d("CLOUD_UPLOAD rejected: device offline uid=${AuthDebugLog.uid(uid)}")
+            throw IllegalStateException("Tidak ada koneksi internet. Hubungkan internet lalu coba lagi.")
         }
-
-        AuthDebugLog.d(
-            "CLOUD_UPLOAD start: uid=${AuthDebugLog.uid(uid)} online=true"
-        )
-
+        AuthDebugLog.d("CLOUD_UPLOAD start: uid=${AuthDebugLog.uid(uid)} online=true")
         val json = databaseJson.first()
         AuthDebugLog.d(
             "CLOUD_UPLOAD payload ready: uid=${AuthDebugLog.uid(uid)} jsonLength=${json.length}"
         )
-
         uploadJson(uid, json)
     }
 
     suspend fun uploadJson(uid: String, json: String) {
         require(uid.isNotBlank())
-
         if (!isNetworkAvailable()) {
-            AuthDebugLog.d(
-                "CLOUD_UPLOAD rejected before Firestore: device offline uid=${AuthDebugLog.uid(uid)}"
-            )
-            throw IllegalStateException(
-                "Tidak ada koneksi internet. Hubungkan internet lalu coba lagi."
-            )
+            AuthDebugLog.d("CLOUD_UPLOAD rejected before Firestore: device offline uid=${AuthDebugLog.uid(uid)}")
+            throw IllegalStateException("Tidak ada koneksi internet. Hubungkan internet lalu coba lagi.")
         }
-
         try {
             withTimeout(CLOUD_TIMEOUT_MS) {
-                document(uid)
-                    .set(
-                        mapOf(
-                            "uid" to uid,
-                            "dataJson" to json,
-                            "updatedAt" to System.currentTimeMillis()
-                        )
+                document(uid).set(
+                    mapOf(
+                        "uid" to uid,
+                        "dataJson" to json,
+                        "updatedAt" to System.currentTimeMillis()
                     )
-                    .await()
+                ).await()
             }
-
             saveLocalJson(uid, json)
-            AuthDebugLog.d(
-                "CLOUD_UPLOAD success: uid=${AuthDebugLog.uid(uid)} jsonLength=${json.length}"
-            )
+            AuthDebugLog.d("CLOUD_UPLOAD success: uid=${AuthDebugLog.uid(uid)} jsonLength=${json.length}")
         } catch (error: Throwable) {
             val message = when (error) {
-                is TimeoutCancellationException ->
-                    "Cloud upload timed out after ${CLOUD_TIMEOUT_MS / 1000}s."
+                is TimeoutCancellationException -> "Cloud upload timed out after ${CLOUD_TIMEOUT_MS / 1000}s."
                 else -> error.message ?: "Cloud upload failed."
             }
-
             AuthDebugLog.e(
                 "CLOUD_UPLOAD failed: uid=${AuthDebugLog.uid(uid)} ${error::class.simpleName}: $message",
                 error
             )
-
-            if (error is TimeoutCancellationException) {
-                throw IllegalStateException(message, error)
-            }
-
+            if (error is TimeoutCancellationException) throw IllegalStateException(message, error)
             throw error
         }
     }
@@ -223,17 +186,9 @@ class CloudDataSyncRepository @Inject constructor(
         clearLocalAcademicData()
         NotificationHelper.cancelAllAppNotifications(context)
         ReminderScheduler.cancel(context)
-
-        context.filesDir
-            .listFiles()
-            ?.filter {
-                it.name.startsWith("mytask_data_") &&
-                    it.name.endsWith(".json")
-            }
-            ?.forEach { file ->
-                runCatching { file.delete() }
-            }
-
+        context.filesDir.listFiles()
+            ?.filter { it.name.startsWith("mytask_data_") && it.name.endsWith(".json") }
+            ?.forEach { file -> runCatching { file.delete() } }
         AuthDebugLog.d("LOCAL_SESSION clear completed")
     }
 
@@ -247,25 +202,19 @@ class CloudDataSyncRepository @Inject constructor(
             database.scheduleDao().deleteAll()
             database.taskDao().deleteAll()
             database.courseDao().deleteAll()
-
             if (courses.isNotEmpty()) database.courseDao().insertAll(courses)
             if (tasks.isNotEmpty()) database.taskDao().insertAll(tasks)
             if (schedules.isNotEmpty()) database.scheduleDao().insertAll(schedules)
         }
-
         AuthDebugLog.d(
             "ROOM restore completed: courses=${courses.size} tasks=${tasks.size} schedules=${schedules.size}"
         )
     }
 
     private fun isNetworkAvailable(): Boolean {
-        val connectivityManager =
-            context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
-
+        val connectivityManager = context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
         val network = connectivityManager.activeNetwork ?: return false
-        val capabilities =
-            connectivityManager.getNetworkCapabilities(network) ?: return false
-
+        val capabilities = connectivityManager.getNetworkCapabilities(network) ?: return false
         return capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) &&
             capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)
     }
@@ -309,15 +258,18 @@ class CloudDataSyncRepository @Inject constructor(
 
             put("schedules", JSONArray().apply {
                 schedules.forEach { schedule ->
+                    val ranges = schedule.getTimeRanges()
                     put(JSONObject().apply {
                         put("id", schedule.id)
                         put("courseId", schedule.courseId ?: JSONObject.NULL)
                         put("dayOfWeek", schedule.dayOfWeek)
                         put("startMinutes", schedule.startMinutes)
                         put("endMinutes", schedule.endMinutes)
-                        // Keep human-readable keys for backward compatibility and export files.
                         put("startTime", schedule.startMinutes.toDisplayTime())
                         put("endTime", schedule.endMinutes.toDisplayTime())
+                        put("timeRanges", JSONArray().apply {
+                            ranges.forEach { put(it.toJson()) }
+                        })
                         put("room", schedule.room)
                     })
                 }
@@ -369,30 +321,69 @@ class CloudDataSyncRepository @Inject constructor(
 
     private fun parseSchedules(array: JSONArray?): List<ScheduleEntity> {
         if (array == null) return emptyList()
+
         return buildList {
             for (index in 0 until array.length()) {
                 val item = array.getJSONObject(index)
                 val courseId = if (item.isNull("courseId")) null else item.optLong("courseId")
+
                 val legacyStart = item.optString("startTime", "")
                 val legacyEnd = item.optString("endTime", "")
-                val startMinutes = if (item.has("startMinutes")) {
+                val legacyStartMinutes = if (item.has("startMinutes")) {
                     item.optInt("startMinutes")
                 } else {
-                    legacyStart.toMinuteOfDayOrNull() ?: 0
+                    legacyStart.toMinuteOfDayOrNull() ?: -1
                 }
-                val endMinutes = if (item.has("endMinutes")) {
+                val legacyEndMinutes = if (item.has("endMinutes")) {
                     item.optInt("endMinutes")
                 } else {
-                    legacyEnd.toMinuteOfDayOrNull() ?: 0
+                    legacyEnd.toMinuteOfDayOrNull() ?: -1
                 }
+
+                val timeRanges = when {
+                    item.has("timeRanges") -> {
+                        when (val value = item.get("timeRanges")) {
+                            is JSONArray -> buildList {
+                                for (rangeIndex in 0 until value.length()) {
+                                    ScheduleTimeRange.fromJson(value.getJSONObject(rangeIndex))?.let(::add)
+                                }
+                            }
+                            is String -> value.toScheduleTimeRangesOrNull() ?: emptyList()
+                            else -> emptyList()
+                        }
+                    }
+                    else -> emptyList()
+                }
+
+                val sortedRanges = if (timeRanges.isNotEmpty()) {
+                    timeRanges.sortedBy { it.startMinutes }
+                } else if (
+                    legacyStartMinutes in 0..1439 &&
+                    legacyEndMinutes in 0..1439 &&
+                    legacyEndMinutes > legacyStartMinutes
+                ) {
+                    listOf(
+                        ScheduleTimeRange(
+                            startMinutes = legacyStartMinutes,
+                            endMinutes = legacyEndMinutes
+                        )
+                    )
+                } else {
+                    emptyList()
+                }
+
+                if (sortedRanges.isEmpty()) continue
+
+                val firstRange = sortedRanges.first()
                 add(
                     ScheduleEntity(
                         id = item.optLong("id", 0L),
                         courseId = courseId,
                         dayOfWeek = item.optInt("dayOfWeek", 1),
-                        startMinutes = startMinutes.coerceIn(0, 1439),
-                        endMinutes = endMinutes.coerceIn(0, 1439),
-                        room = item.optString("room")
+                        startMinutes = firstRange.startMinutes,
+                        endMinutes = firstRange.endMinutes,
+                        room = item.optString("room"),
+                        timeRangesJson = sortedRanges.toJsonString()
                     )
                 )
             }
