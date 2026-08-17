@@ -27,7 +27,6 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
-import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
@@ -41,12 +40,14 @@ import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -78,6 +79,17 @@ fun ScheduleScreen(
         if (addRequestKey > 0) editingScheduleId = -1L
     }
 
+    if (editingScheduleId != null) {
+        ScheduleForm(
+            scheduleId = editingScheduleId?.takeIf { it != -1L },
+            courses = courses,
+            viewModel = viewModel,
+            onCancel = { editingScheduleId = null },
+            onSaved = { editingScheduleId = null }
+        )
+        return
+    }
+
     Scaffold(
         topBar = { TopAppBar(title = { Text("Jadwal Kuliah") }) },
         floatingActionButton = {
@@ -87,13 +99,6 @@ fun ScheduleScreen(
         }
     ) { paddingValues ->
         when {
-            editingScheduleId != null -> ScheduleForm(
-                scheduleId = editingScheduleId?.takeIf { it != -1L },
-                courses = courses,
-                viewModel = viewModel,
-                onCancel = { editingScheduleId = null },
-                onSaved = { editingScheduleId = null }
-            )
             schedules.isEmpty() -> EmptyScheduleState(paddingValues)
             else -> LazyColumn(
                 modifier = Modifier.fillMaxSize().padding(paddingValues),
@@ -213,148 +218,277 @@ private fun ScheduleForm(
     }
 
     fun pickTime(initialMinutes: Int, onPicked: (Int) -> Unit) {
-        TimePickerDialog(context, { _, hour, minute -> onPicked(hour * 60 + minute) }, initialMinutes / 60, initialMinutes % 60, true).show()
+        TimePickerDialog(
+            context,
+            { _, hour, minute -> onPicked(hour * 60 + minute) },
+            initialMinutes / 60,
+            initialMinutes % 60,
+            true
+        ).show()
     }
 
     val selectedDayName = dayGroups.firstOrNull { it.first == day }?.second ?: "Senin"
+    val isEditing = scheduleId != null
 
-    Column(
-        modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 20.dp, vertical = 12.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp)
-    ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            IconButton(onClick = onCancel) { Icon(Icons.Default.ArrowBack, contentDescription = "Kembali") }
-            Column(Modifier.padding(start = 4.dp)) {
-                Text(if (scheduleId == null) "Tambah Jadwal" else "Edit Jadwal", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
-                Text("Atur detail jadwal kuliah", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
-        }
-
-        ScheduleSection(title = "Mata Kuliah") {
-            ExposedDropdownMenuBox(expanded = courseExpanded, onExpandedChange = { courseExpanded = !courseExpanded }) {
-                OutlinedTextField(
-                    value = selectedCourse?.let { "${it.code} • ${it.name}" } ?: "",
-                    onValueChange = {},
-                    readOnly = true,
-                    modifier = Modifier.fillMaxWidth().menuAnchor(),
-                    label = { Text("Mata Kuliah") },
-                    placeholder = { Text("Pilih mata kuliah") },
-                    trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = courseExpanded) },
-                    enabled = courses.isNotEmpty(),
-                    singleLine = true,
-                    shape = RoundedCornerShape(14.dp)
-                )
-                ExposedDropdownMenu(expanded = courseExpanded, onDismissRequest = { courseExpanded = false }) {
-                    courses.forEach { course ->
-                        DropdownMenuItem(
-                            text = { Column { Text(course.name); if (course.code.isNotBlank()) Text(course.code, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant) } },
-                            onClick = { selectedCourse = course; courseExpanded = false }
-                        )
-                    }
-                }
-            }
-        }
-
-        ScheduleSection(title = "Hari") {
-            ExposedDropdownMenuBox(expanded = dayExpanded, onExpandedChange = { dayExpanded = !dayExpanded }) {
-                OutlinedTextField(
-                    value = selectedDayName,
-                    onValueChange = {},
-                    readOnly = true,
-                    modifier = Modifier.fillMaxWidth().menuAnchor(),
-                    label = { Text("Hari kuliah") },
-                    trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = dayExpanded) },
-                    singleLine = true,
-                    shape = RoundedCornerShape(14.dp)
-                )
-                ExposedDropdownMenu(expanded = dayExpanded, onDismissRequest = { dayExpanded = false }) {
-                    dayGroups.forEach { item ->
-                        DropdownMenuItem(text = { Text(item.second) }, onClick = { day = item.first; dayExpanded = false })
-                    }
-                }
-            }
-        }
-
-        ScheduleSection(title = "Waktu Kuliah", subtitle = "Pilih waktu mulai dan selesai") {
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                TimeField(label = "Mulai", value = startMinutes.toDisplayTime(), modifier = Modifier.weight(1f)) {
-                    pickTime(startMinutes) {
-                        startMinutes = it
-                        if (endMinutes <= it) endMinutes = (it + 60).coerceAtMost(1439)
-                        timeError = null
-                    }
-                }
-                TimeField(label = "Selesai", value = endMinutes.toDisplayTime(), modifier = Modifier.weight(1f)) {
-                    pickTime(endMinutes) { endMinutes = it; timeError = null }
-                }
-            }
-            if (timeError != null) {
-                Spacer(Modifier.height(8.dp))
-                Text(timeError!!, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
-            }
-        }
-
-        ScheduleSection(title = "Lokasi", subtitle = "Opsional") {
-            OutlinedTextField(
-                value = room,
-                onValueChange = { room = it },
-                modifier = Modifier.fillMaxWidth(),
-                label = { Text("Ruangan") },
-                placeholder = { Text("Contoh: Lab 2 / Ruang 301") },
-                singleLine = true,
-                shape = RoundedCornerShape(14.dp)
-            )
-        }
-
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            TextButton(onClick = onCancel, modifier = Modifier.weight(1f).height(52.dp)) { Text("Batal") }
-            Button(
-                onClick = {
-                    if (endMinutes <= startMinutes) {
-                        timeError = "Waktu selesai harus setelah waktu mulai."
-                        return@Button
-                    }
-                    val course = selectedCourse ?: return@Button
-                    timeError = null
-                    if (scheduleId == null) {
-                        viewModel.addSchedule(course.id, day, startMinutes, endMinutes, room.trim(), onSaved)
-                    } else {
-                        val current = schedule ?: return@Button
-                        viewModel.updateSchedule(current.copy(courseId = course.id, dayOfWeek = day, startMinutes = startMinutes, endMinutes = endMinutes, room = room.trim()), onSaved)
+    Scaffold(
+        topBar = {
+            TopAppBar(
+                navigationIcon = {
+                    IconButton(onClick = onCancel) {
+                        Icon(Icons.Default.ArrowBack, contentDescription = "Kembali")
                     }
                 },
-                modifier = Modifier.weight(1f).height(52.dp),
-                enabled = selectedCourse != null,
-                shape = RoundedCornerShape(14.dp)
-            ) { Text(if (scheduleId == null) "Simpan Jadwal" else "Simpan Perubahan", fontWeight = FontWeight.SemiBold) }
+                title = {
+                    Column {
+                        Text(if (isEditing) "Edit Jadwal" else "Tambah Jadwal", fontWeight = FontWeight.Bold)
+                        Text(
+                            if (isEditing) "Perbarui informasi jadwal kuliah" else "Buat jadwal kuliah baru",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                },
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.background)
+            )
+        },
+        bottomBar = {
+            Surface(shadowElevation = 8.dp, tonalElevation = 2.dp) {
+                Row(
+                    Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 12.dp),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    OutlinedButton(
+                        onClick = onCancel,
+                        modifier = Modifier.weight(0.8f).height(52.dp),
+                        shape = RoundedCornerShape(14.dp)
+                    ) { Text("Batal") }
+                    Button(
+                        onClick = {
+                            if (endMinutes <= startMinutes) {
+                                timeError = "Waktu selesai harus setelah waktu mulai."
+                                return@Button
+                            }
+                            val course = selectedCourse ?: return@Button
+                            timeError = null
+                            if (scheduleId == null) {
+                                viewModel.addSchedule(course.id, day, startMinutes, endMinutes, room.trim(), onSaved)
+                            } else {
+                                val current = schedule ?: return@Button
+                                viewModel.updateSchedule(
+                                    current.copy(
+                                        courseId = course.id,
+                                        dayOfWeek = day,
+                                        startMinutes = startMinutes,
+                                        endMinutes = endMinutes,
+                                        room = room.trim()
+                                    ),
+                                    onSaved
+                                )
+                            }
+                        },
+                        modifier = Modifier.weight(1.2f).height(52.dp),
+                        enabled = selectedCourse != null,
+                        shape = RoundedCornerShape(14.dp)
+                    ) {
+                        Text(if (isEditing) "Simpan Perubahan" else "Simpan Jadwal", fontWeight = FontWeight.SemiBold)
+                    }
+                }
+            }
         }
-        Spacer(Modifier.height(48.dp))
+    ) { paddingValues ->
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .verticalScroll(rememberScrollState())
+                .padding(paddingValues)
+                .padding(horizontal = 20.dp, vertical = 12.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp)
+        ) {
+            FormSection(
+                title = "Mata Kuliah",
+                subtitle = "Pilih mata kuliah yang memiliki jadwal ini"
+            ) {
+                ExposedDropdownMenuBox(
+                    expanded = courseExpanded,
+                    onExpandedChange = { courseExpanded = !courseExpanded }
+                ) {
+                    OutlinedTextField(
+                        value = selectedCourse?.let { "${it.code} • ${it.name}" } ?: "",
+                        onValueChange = {},
+                        readOnly = true,
+                        modifier = Modifier.fillMaxWidth().menuAnchor(),
+                        label = { Text("Mata Kuliah") },
+                        placeholder = { Text("Pilih mata kuliah") },
+                        trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = courseExpanded) },
+                        enabled = courses.isNotEmpty(),
+                        singleLine = true,
+                        shape = RoundedCornerShape(14.dp)
+                    )
+                    ExposedDropdownMenu(
+                        expanded = courseExpanded,
+                        onDismissRequest = { courseExpanded = false }
+                    ) {
+                        courses.forEach { course ->
+                            DropdownMenuItem(
+                                text = {
+                                    Column {
+                                        Text(course.name, fontWeight = FontWeight.Medium)
+                                        if (course.code.isNotBlank()) {
+                                            Text(course.code, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                        }
+                                    }
+                                },
+                                onClick = {
+                                    selectedCourse = course
+                                    courseExpanded = false
+                                }
+                            )
+                        }
+                    }
+                }
+            }
+
+            FormSection(title = "Hari") {
+                ExposedDropdownMenuBox(
+                    expanded = dayExpanded,
+                    onExpandedChange = { dayExpanded = !dayExpanded }
+                ) {
+                    OutlinedTextField(
+                        value = selectedDayName,
+                        onValueChange = {},
+                        readOnly = true,
+                        modifier = Modifier.fillMaxWidth().menuAnchor(),
+                        label = { Text("Hari kuliah") },
+                        trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = dayExpanded) },
+                        singleLine = true,
+                        shape = RoundedCornerShape(14.dp)
+                    )
+                    ExposedDropdownMenu(
+                        expanded = dayExpanded,
+                        onDismissRequest = { dayExpanded = false }
+                    ) {
+                        dayGroups.forEach { item ->
+                            DropdownMenuItem(
+                                text = { Text(item.second) },
+                                onClick = {
+                                    day = item.first
+                                    dayExpanded = false
+                                }
+                            )
+                        }
+                    }
+                }
+            }
+
+            FormSection(
+                title = "Waktu Kuliah",
+                subtitle = "Gunakan format 24 jam"
+            ) {
+                Row(
+                    Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    TimeField(
+                        label = "Mulai",
+                        value = startMinutes.toDisplayTime(),
+                        modifier = Modifier.weight(1f),
+                        onClick = {
+                            pickTime(startMinutes) {
+                                startMinutes = it
+                                if (endMinutes <= it) endMinutes = (it + 60).coerceAtMost(1439)
+                                timeError = null
+                            }
+                        }
+                    )
+                    TimeField(
+                        label = "Selesai",
+                        value = endMinutes.toDisplayTime(),
+                        modifier = Modifier.weight(1f),
+                        onClick = {
+                            pickTime(endMinutes) {
+                                endMinutes = it
+                                timeError = null
+                            }
+                        }
+                    )
+                }
+                if (timeError != null) {
+                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        timeError!!,
+                        color = MaterialTheme.colorScheme.error,
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                }
+            }
+
+            FormSection(
+                title = "Lokasi",
+                subtitle = "Opsional"
+            ) {
+                OutlinedTextField(
+                    value = room,
+                    onValueChange = { room = it },
+                    modifier = Modifier.fillMaxWidth(),
+                    label = { Text("Ruangan") },
+                    placeholder = { Text("Contoh: Lab 2 / Ruang 301") },
+                    singleLine = true,
+                    shape = RoundedCornerShape(14.dp)
+                )
+            }
+
+            Spacer(Modifier.height(12.dp))
+        }
     }
 }
 
 @Composable
-private fun ScheduleSection(title: String, subtitle: String? = null, content: @Composable () -> Unit) {
+private fun FormSection(
+    title: String,
+    subtitle: String? = null,
+    content: @Composable () -> Unit
+) {
     Card(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(20.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.22f))
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.20f))
     ) {
-        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        Column(
+            Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
             Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-            if (subtitle != null) Text(subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            if (subtitle != null) {
+                Text(
+                    subtitle,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
             content()
         }
     }
 }
 
 @Composable
-private fun TimeField(label: String, value: String, modifier: Modifier, onClick: () -> Unit) {
-    Button(onClick = onClick, modifier = modifier.height(68.dp), shape = RoundedCornerShape(16.dp), contentPadding = PaddingValues(horizontal = 12.dp)) {
+private fun TimeField(
+    label: String,
+    value: String,
+    modifier: Modifier,
+    onClick: () -> Unit
+) {
+    OutlinedButton(
+        onClick = onClick,
+        modifier = modifier.height(78.dp),
+        shape = RoundedCornerShape(16.dp),
+        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp)
+    ) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
             Text(label, style = MaterialTheme.typography.labelSmall)
-            Spacer(Modifier.height(2.dp))
-            Text(value, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+            Spacer(Modifier.height(3.dp))
+            Text(value, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+            Text("Ketuk untuk mengubah", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
 }
