@@ -39,7 +39,7 @@ object NotificationHelper {
             SCHEDULE_CHANNEL_ID,
             "Jadwal Kuliah",
             NotificationManager.IMPORTANCE_HIGH
-        ).apply { description = "Pengingat jadwal kuliah dua jam sebelum dimulai" }
+        ).apply { description = "Pengingat jadwal dan status jadwal yang sedang berlangsung" }
         manager.createNotificationChannel(taskChannel)
         manager.createNotificationChannel(scheduleChannel)
         AppDebugLog.d("NOTIFICATION", "channels ready")
