@@ -23,6 +23,7 @@ object ReminderScheduler {
     private const val ALARM_REQUEST_CODE = 5001
     private const val TASK_DEADLINE_REQUEST_BASE = 6000
     private const val SCHEDULE_REQUEST_BASE = 7000
+    private const val SCHEDULE_START_REQUEST_BASE = 8000
     private const val IMMEDIATE_WORK_NAME = "mytask_today_notification"
     private const val TWO_HOURS_MILLIS = 2 * 60 * 60 * 1000L
 
@@ -36,18 +37,12 @@ object ReminderScheduler {
         )
     }
 
-    fun scheduleTaskDeadline(
-        context: Context,
-        taskId: Long,
-        deadline: Date?
-    ) {
+    fun scheduleTaskDeadline(context: Context, taskId: Long, deadline: Date?) {
         cancelTaskDeadline(context, taskId)
-
         if (deadline == null || deadline.time <= System.currentTimeMillis()) {
             AppDebugLog.d("NOTIFICATION", "deadline alarm skipped taskId=$taskId deadline=$deadline")
             return
         }
-
         val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
         val intent = Intent(context, DeadlineReceiver::class.java).apply {
             putExtra(DeadlineReceiver.EXTRA_TASK_ID, taskId)
@@ -58,13 +53,7 @@ object ReminderScheduler {
             intent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
-
-        alarmManager.setAndAllowWhileIdle(
-            AlarmManager.RTC_WAKEUP,
-            deadline.time,
-            pendingIntent
-        )
-
+        alarmManager.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, deadline.time, pendingIntent)
         AppDebugLog.d("NOTIFICATION", "deadline alarm scheduled taskId=$taskId at=${deadline.time}")
     }
 
@@ -81,51 +70,37 @@ object ReminderScheduler {
     }
 
     fun scheduleScheduleReminder(context: Context, schedule: ScheduleEntity) {
-        // Only replace the alarm here. Do not cancel the currently visible
-        // notification, because the alarm receiver uses this method to queue
-        // next week's occurrence after showing the current notification.
-        cancelScheduleReminderAlarm(context, schedule.id)
+        cancelScheduleReminderAlarms(context, schedule.id)
 
-        val triggerAt = nextScheduleReminderTime(schedule, System.currentTimeMillis())
-        if (triggerAt == null) {
+        val reminderAt = nextScheduleReminderTime(schedule, System.currentTimeMillis())
+        if (reminderAt == null) {
             AppDebugLog.d("NOTIFICATION", "schedule reminder skipped scheduleId=${schedule.id}")
             return
         }
 
         val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
-        val intent = Intent(context, ScheduleNotificationReceiver::class.java).apply {
-            action = ScheduleNotificationReceiver.ACTION_SCHEDULE_ALARM
-            putExtra(ScheduleNotificationReceiver.EXTRA_SCHEDULE_ID, schedule.id)
-        }
-        val pendingIntent = PendingIntent.getBroadcast(
-            context,
-            scheduleRequestCode(schedule.id),
-            intent,
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        setScheduleAlarm(
+            alarmManager = alarmManager,
+            triggerAt = reminderAt,
+            pendingIntent = scheduleReminderPendingIntent(context, schedule.id)
         )
 
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && alarmManager.canScheduleExactAlarms()) {
-            alarmManager.setExactAndAllowWhileIdle(
-                AlarmManager.RTC_WAKEUP,
-                triggerAt,
-                pendingIntent
-            )
-        } else {
-            alarmManager.setAndAllowWhileIdle(
-                AlarmManager.RTC_WAKEUP,
-                triggerAt,
-                pendingIntent
-            )
-        }
+        // A second alarm ends the persistent notification when the class starts.
+        val startAt = nextScheduleStartTime(schedule, System.currentTimeMillis())
+        setScheduleAlarm(
+            alarmManager = alarmManager,
+            triggerAt = startAt,
+            pendingIntent = scheduleStartPendingIntent(context, schedule.id)
+        )
 
         AppDebugLog.d(
             "NOTIFICATION",
-            "schedule reminder scheduled scheduleId=${schedule.id} triggerAt=$triggerAt"
+            "schedule reminder window scheduled scheduleId=${schedule.id} reminderAt=$reminderAt startAt=$startAt"
         )
     }
 
     fun cancelScheduleReminder(context: Context, scheduleId: Long) {
-        cancelScheduleReminderAlarm(context, scheduleId)
+        cancelScheduleReminderAlarms(context, scheduleId)
         NotificationHelper.cancelScheduleNotification(context, scheduleId.toString())
         AppDebugLog.d("NOTIFICATION", "schedule reminder cancelled scheduleId=$scheduleId")
     }
@@ -134,7 +109,6 @@ object ReminderScheduler {
         schedules.forEach { scheduleScheduleReminder(context, it) }
     }
 
-    /** Rebuild schedule alarms from the local Room database. */
     fun rescheduleAllStoredScheduleReminders(context: Context) {
         CoroutineScope(SupervisorJob() + Dispatchers.IO).launch {
             val database = Room.databaseBuilder(
@@ -145,10 +119,7 @@ object ReminderScheduler {
             try {
                 val schedules = database.scheduleDao().getAllSchedulesSnapshot()
                 rescheduleAllScheduleReminders(context.applicationContext, schedules)
-                AppDebugLog.d(
-                    "NOTIFICATION",
-                    "schedule alarms restored from Room count=${schedules.size}"
-                )
+                AppDebugLog.d("NOTIFICATION", "schedule alarms restored from Room count=${schedules.size}")
             } catch (error: Throwable) {
                 AppDebugLog.e("NOTIFICATION", "schedule alarms restore failed", error)
             } finally {
@@ -171,14 +142,8 @@ object ReminderScheduler {
             set(Calendar.SECOND, 0)
             set(Calendar.MILLISECOND, 0)
         }
-
         alarmManager.cancel(pendingIntent)
-        alarmManager.setAndAllowWhileIdle(
-            AlarmManager.RTC_WAKEUP,
-            nextMidnight.timeInMillis,
-            pendingIntent
-        )
-
+        alarmManager.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, nextMidnight.timeInMillis, pendingIntent)
         AppDebugLog.d("NOTIFICATION", "next midnight scheduled=${nextMidnight.timeInMillis}")
     }
 
@@ -197,24 +162,48 @@ object ReminderScheduler {
     }
 
     private fun nextScheduleReminderTime(schedule: ScheduleEntity, nowMillis: Long): Long? {
+        val candidate = nextOccurrence(schedule, nowMillis)
+        var triggerAt = candidate.timeInMillis - TWO_HOURS_MILLIS
+        if (triggerAt <= nowMillis) {
+            candidate.add(Calendar.WEEK_OF_YEAR, 1)
+            triggerAt = candidate.timeInMillis - TWO_HOURS_MILLIS
+        }
+        return triggerAt.takeIf { it > nowMillis }
+    }
+
+    private fun nextScheduleStartTime(schedule: ScheduleEntity, nowMillis: Long): Long {
+        val candidate = nextOccurrence(schedule, nowMillis)
+        if (candidate.timeInMillis <= nowMillis) {
+            candidate.add(Calendar.WEEK_OF_YEAR, 1)
+        }
+        return candidate.timeInMillis
+    }
+
+    private fun nextOccurrence(schedule: ScheduleEntity, nowMillis: Long): Calendar {
         val now = Calendar.getInstance().apply { timeInMillis = nowMillis }
-        val candidate = Calendar.getInstance().apply {
+        return Calendar.getInstance().apply {
             timeInMillis = nowMillis
             set(Calendar.DAY_OF_WEEK, schedule.dayOfWeek)
             set(Calendar.HOUR_OF_DAY, schedule.startMinutes / 60)
             set(Calendar.MINUTE, schedule.startMinutes % 60)
             set(Calendar.SECOND, 0)
             set(Calendar.MILLISECOND, 0)
+            if (timeInMillis <= now.timeInMillis) {
+                add(Calendar.WEEK_OF_YEAR, 1)
+            }
         }
+    }
 
-        var triggerAt = candidate.timeInMillis - TWO_HOURS_MILLIS
-
-        if (triggerAt <= now.timeInMillis) {
-            candidate.add(Calendar.WEEK_OF_YEAR, 1)
-            triggerAt = candidate.timeInMillis - TWO_HOURS_MILLIS
+    private fun setScheduleAlarm(
+        alarmManager: AlarmManager,
+        triggerAt: Long,
+        pendingIntent: PendingIntent
+    ) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && alarmManager.canScheduleExactAlarms()) {
+            alarmManager.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerAt, pendingIntent)
+        } else {
+            alarmManager.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerAt, pendingIntent)
         }
-
-        return triggerAt.takeIf { it > nowMillis }
     }
 
     private fun taskDeadlineRequestCode(taskId: Long): Int =
@@ -222,6 +211,9 @@ object ReminderScheduler {
 
     private fun scheduleRequestCode(scheduleId: Long): Int =
         SCHEDULE_REQUEST_BASE + (scheduleId.hashCode() and 0x7fffffff) % 100000
+
+    private fun scheduleStartRequestCode(scheduleId: Long): Int =
+        SCHEDULE_START_REQUEST_BASE + (scheduleId.hashCode() and 0x7fffffff) % 100000
 
     private fun taskDeadlinePendingIntent(context: Context, taskId: Long): PendingIntent {
         val intent = Intent(context, DeadlineReceiver::class.java).apply {
@@ -235,9 +227,10 @@ object ReminderScheduler {
         )
     }
 
-    private fun cancelScheduleReminderAlarm(context: Context, scheduleId: Long) {
+    private fun cancelScheduleReminderAlarms(context: Context, scheduleId: Long) {
         val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
         alarmManager.cancel(scheduleReminderPendingIntent(context, scheduleId))
+        alarmManager.cancel(scheduleStartPendingIntent(context, scheduleId))
     }
 
     private fun scheduleReminderPendingIntent(context: Context, scheduleId: Long): PendingIntent {
@@ -248,6 +241,19 @@ object ReminderScheduler {
         return PendingIntent.getBroadcast(
             context,
             scheduleRequestCode(scheduleId),
+            intent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+    }
+
+    private fun scheduleStartPendingIntent(context: Context, scheduleId: Long): PendingIntent {
+        val intent = Intent(context, ScheduleNotificationReceiver::class.java).apply {
+            action = ScheduleNotificationReceiver.ACTION_SCHEDULE_START
+            putExtra(ScheduleNotificationReceiver.EXTRA_SCHEDULE_ID, scheduleId)
+        }
+        return PendingIntent.getBroadcast(
+            context,
+            scheduleStartRequestCode(scheduleId),
             intent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
