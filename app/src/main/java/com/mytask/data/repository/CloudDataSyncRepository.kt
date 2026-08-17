@@ -29,9 +29,14 @@ import kotlinx.coroutines.withTimeout
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
+import java.security.MessageDigest
 import java.util.Date
 import javax.inject.Inject
 import javax.inject.Singleton
+
+class CloudSyncConflictException(
+    message: String = "Data online berubah dari perangkat lain. Sinkronkan ulang sebelum menyimpan perubahan."
+) : IllegalStateException(message)
 
 @Singleton
 class CloudDataSyncRepository @Inject constructor(
@@ -81,9 +86,11 @@ class CloudDataSyncRepository @Inject constructor(
                 document(uid).get().await()
             }
             val cloudJson = snapshot.getString("dataJson")?.takeIf { it.isNotBlank() }
+            val cloudUpdatedAt = snapshot.getLong("updatedAt") ?: 0L
 
             if (cloudJson == null) {
                 clearLocalAcademicData()
+                userProfileRepository.saveCloudSyncState(0L, "")
                 NotificationHelper.cancelAllAppNotifications(context)
                 ReminderScheduler.cancel(context)
                 ReminderScheduler.initialize(context)
@@ -94,11 +101,12 @@ class CloudDataSyncRepository @Inject constructor(
             } else {
                 replaceLocalDatabase(cloudJson)
                 saveLocalJson(uid, cloudJson)
+                userProfileRepository.saveCloudSyncState(cloudUpdatedAt, sha256(cloudJson))
                 NotificationHelper.cancelAllAppNotifications(context)
                 ReminderScheduler.cancel(context)
                 ReminderScheduler.initialize(context)
                 AuthDebugLog.d(
-                    "CLOUD_RESTORE success: uid=${AuthDebugLog.uid(uid)} jsonLength=${cloudJson.length}"
+                    "CLOUD_RESTORE success: uid=${AuthDebugLog.uid(uid)} updatedAt=$cloudUpdatedAt jsonLength=${cloudJson.length}"
                 )
                 true
             }
@@ -141,20 +149,53 @@ class CloudDataSyncRepository @Inject constructor(
             AuthDebugLog.d("CLOUD_UPLOAD rejected before Firestore: device offline uid=${AuthDebugLog.uid(uid)}")
             throw IllegalStateException("Tidak ada koneksi internet. Hubungkan internet lalu coba lagi.")
         }
+
+        val dataHash = sha256(json)
+        val lastSyncedUpdatedAt = userProfileRepository.lastCloudUpdatedAt.first()
+        val lastSyncedHash = userProfileRepository.lastCloudDataHash.first()
+
+        // Idempotent upload: if local data is already exactly the last successfully
+        // uploaded snapshot, do not write the same snapshot again.
+        if (lastSyncedHash == dataHash && lastSyncedHash.isNotBlank()) {
+            AuthDebugLog.d(
+                "CLOUD_UPLOAD skipped unchanged snapshot: uid=${AuthDebugLog.uid(uid)} updatedAt=$lastSyncedUpdatedAt"
+            )
+            return
+        }
+
         try {
-            withTimeout(CLOUD_TIMEOUT_MS) {
-                document(uid).set(
-                    mapOf(
-                        "uid" to uid,
-                        "dataJson" to json,
-                        "updatedAt" to System.currentTimeMillis()
+            val newUpdatedAt = withTimeout(CLOUD_TIMEOUT_MS) {
+                firestore.runTransaction { transaction ->
+                    val reference = document(uid)
+                    val snapshot = transaction.get(reference)
+                    val currentUpdatedAt = snapshot.getLong("updatedAt") ?: 0L
+                    val cloudExists = snapshot.exists() && snapshot.getString("dataJson")?.isNotBlank() == true
+
+                    if (cloudExists && currentUpdatedAt != lastSyncedUpdatedAt) {
+                        throw CloudSyncConflictException()
+                    }
+
+                    val version = maxOf(System.currentTimeMillis(), currentUpdatedAt + 1L)
+                    transaction.set(
+                        reference,
+                        mapOf(
+                            "uid" to uid,
+                            "dataJson" to json,
+                            "updatedAt" to version
+                        )
                     )
-                ).await()
+                    version
+                }.await()
             }
+
             saveLocalJson(uid, json)
-            AuthDebugLog.d("CLOUD_UPLOAD success: uid=${AuthDebugLog.uid(uid)} jsonLength=${json.length}")
+            userProfileRepository.saveCloudSyncState(newUpdatedAt, dataHash)
+            AuthDebugLog.d(
+                "CLOUD_UPLOAD success: uid=${AuthDebugLog.uid(uid)} updatedAt=$newUpdatedAt jsonLength=${json.length}"
+            )
         } catch (error: Throwable) {
             val message = when (error) {
+                is CloudSyncConflictException -> error.message ?: "Cloud data conflict."
                 is TimeoutCancellationException -> "Cloud upload timed out after ${CLOUD_TIMEOUT_MS / 1000}s."
                 else -> error.message ?: "Cloud upload failed."
             }
@@ -162,6 +203,7 @@ class CloudDataSyncRepository @Inject constructor(
                 "CLOUD_UPLOAD failed: uid=${AuthDebugLog.uid(uid)} ${error::class.simpleName}: $message",
                 error
             )
+            if (error is CloudSyncConflictException) throw error
             if (error is TimeoutCancellationException) throw IllegalStateException(message, error)
             throw error
         }
@@ -217,6 +259,11 @@ class CloudDataSyncRepository @Inject constructor(
         val capabilities = connectivityManager.getNetworkCapabilities(network) ?: return false
         return capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) &&
             capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)
+    }
+
+    private fun sha256(value: String): String {
+        val digest = MessageDigest.getInstance("SHA-256").digest(value.toByteArray(Charsets.UTF_8))
+        return digest.joinToString("") { byte -> "%02x".format(byte) }
     }
 
     private fun buildJson(
@@ -356,7 +403,9 @@ class CloudDataSyncRepository @Inject constructor(
                 }
 
                 val sortedRanges = if (timeRanges.isNotEmpty()) {
-                    timeRanges.sortedBy { it.startMinutes }
+                    val sorted = timeRanges.sortedBy { it.startMinutes }
+                    val overlaps = sorted.zipWithNext().any { (current, next) -> next.startMinutes < current.endMinutes }
+                    if (overlaps) emptyList() else sorted
                 } else if (
                     legacyStartMinutes in 0..1439 &&
                     legacyEndMinutes in 0..1439 &&
