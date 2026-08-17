@@ -85,6 +85,23 @@ object ReminderScheduler {
 
         when (resolved.state) {
             ScheduleRangeResolver.State.ACTIVE -> {
+                val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
+                val occurrence = ScheduleOccurrence(
+                    resolved.rangeIndex,
+                    resolved.startAt,
+                    resolved.range.startMinutes,
+                    resolved.range.endMinutes
+                )
+
+                // The app can be restored while a schedule is already running.
+                // Trigger the START receiver immediately so the active notification
+                // is posted instead of waiting for the next occurrence.
+                setScheduleAlarm(
+                    alarmManager,
+                    System.currentTimeMillis() + 1_000L,
+                    scheduleStartPendingIntent(context, schedule.id, occurrence)
+                )
+
                 setScheduleEndAlarm(
                     context,
                     schedule.id,
