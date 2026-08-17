@@ -1,17 +1,86 @@
 {
   "app": "MyTask",
-  "template": "healthy_daily_routine",
-  "version": 1,
+  "template": "daily_life_starter",
+  "version": 2,
   "courses": [
-    {"id": 1001, "name": "Rutinitas Kesehatan", "code": "HEALTH", "lecturer": "", "room": ""}
+    {
+      "id": 28,
+      "name": "makan",
+      "code": "PRODUCTIVE",
+      "lecturer": "",
+      "room": "KITCHEN"
+    },
+    {
+      "id": 29,
+      "name": "Jara",
+      "code": "RELATIONSHIP",
+      "lecturer": "",
+      "room": ""
+    },
+    {
+      "id": 30,
+      "name": "Furqon",
+      "code": "SELF SCHEDULE",
+      "lecturer": "",
+      "room": ""
+    },
+    {
+      "id": 31,
+      "name": "Band Music",
+      "code": "ORGANIZATION",
+      "lecturer": "jamming music",
+      "room": "Music Studio"
+    },
+    {
+      "id": 32,
+      "name": "Produktivitas Harian",
+      "code": "PRODUCTIVE",
+      "lecturer": "",
+      "room": ""
+    },
+    {
+      "id": 33,
+      "name": "Sholat",
+      "code": "IBADAH",
+      "lecturer": "",
+      "room": "Masjid"
+    }
   ],
-  "tasks": [
-    {"id": 1001, "courseId": 1001, "title": "Minum Air Putih", "description": "Penuhi kebutuhan minum air secara rutin sepanjang hari.", "deadlineOffsetDays": 0, "priority": 1, "isCompleted": false},
-    {"id": 1002, "courseId": 1001, "title": "Sarapan", "description": "Makan pagi dengan porsi yang cukup.", "deadlineOffsetDays": 0, "priority": 1, "isCompleted": false},
-    {"id": 1003, "courseId": 1001, "title": "Olahraga Ringan", "description": "Bergerak atau berolahraga minimal 30 menit.", "deadlineOffsetDays": 0, "priority": 2, "isCompleted": false}
-  ],
+  "tasks": [],
   "schedules": [
-    {"id": 1001, "courseId": 1001, "dayOfWeek": 0, "timeRanges": [{"startMinutes": 390, "endMinutes": 400}], "room": ""},
-    {"id": 1002, "courseId": 1001, "dayOfWeek": 0, "timeRanges": [{"startMinutes": 1020, "endMinutes": 1050}], "room": ""}
+    {
+      "id": 41,
+      "courseId": 33,
+      "dayOfWeek": 0,
+      "timeRanges": [
+        { "startMinutes": 257, "endMinutes": 260 },
+        { "startMinutes": 693, "endMinutes": 753 },
+        { "startMinutes": 894, "endMinutes": 954 },
+        { "startMinutes": 1050, "endMinutes": 1110 },
+        { "startMinutes": 1120, "endMinutes": 1180 }
+      ],
+      "room": "Masjid"
+    },
+    {
+      "id": 42,
+      "courseId": 28,
+      "dayOfWeek": 0,
+      "timeRanges": [
+        { "startMinutes": 360, "endMinutes": 370 },
+        { "startMinutes": 720, "endMinutes": 730 },
+        { "startMinutes": 1080, "endMinutes": 1090 }
+      ],
+      "room": "Matbah"
+    },
+    {
+      "id": 43,
+      "courseId": 31,
+      "dayOfWeek": 6,
+      "timeRanges": [
+        { "startMinutes": 480, "endMinutes": 600 },
+        { "startMinutes": 660, "endMinutes": 720 }
+      ],
+      "room": "Studio Musik"
+    }
   ]
 }
