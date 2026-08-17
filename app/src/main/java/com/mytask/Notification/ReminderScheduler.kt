@@ -74,12 +74,6 @@ object ReminderScheduler {
         }
     }
 
-    /**
-     * Schedules only the next upcoming range for this schedule.
-     * Once that range starts, ScheduleNotificationReceiver advances the chain
-     * to the following range. This avoids overlapping PendingIntents while
-     * still supporting any number of ranges within one schedule.
-     */
     fun scheduleScheduleReminder(context: Context, schedule: ScheduleEntity) {
         cancelScheduleReminderAlarms(context, schedule.id)
 
@@ -131,11 +125,7 @@ object ReminderScheduler {
 
     fun rescheduleAllStoredScheduleReminders(context: Context) {
         CoroutineScope(SupervisorJob() + Dispatchers.IO).launch {
-            val database = Room.databaseBuilder(
-                context.applicationContext,
-                MyTaskDatabase::class.java,
-                "mytask_db"
-            ).build()
+            val database = MyTaskDatabase.builder(context.applicationContext).build()
             try {
                 val schedules = database.scheduleDao().getAllSchedulesSnapshot()
                 rescheduleAllScheduleReminders(context.applicationContext, schedules)
