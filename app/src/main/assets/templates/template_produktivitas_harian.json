@@ -3,14 +3,14 @@
   "template": "produktivitas_harian",
   "version": 3,
   "courses": [
-    { "id": 101, "name": "Waktu Makan", "code": "PRODUKTIVITAS", "lecturer": "", "room": "KITCHEN" },
-    { "id": 102, "name": "Olahraga Ringan", "code": "PRODUKTIVITAS", "lecturer": "", "room": "RUANG TAMU" },
-    { "id": 103, "name": "Jam Tidur", "code": "PRODUKTIVITAS", "lecturer": "", "room": "KAMAR TIDUR" }
+    { "id": 101, "name": "Waktu Makan", "code": "PRODUKTIVITAS", "lecturer": "", "room": "" },
+    { "id": 102, "name": "Olahraga Ringan", "code": "PRODUKTIVITAS", "lecturer": "", "room": "" },
+    { "id": 103, "name": "Jam Tidur", "code": "PRODUKTIVITAS", "lecturer": "", "room": "" }
   ],
   "tasks": [],
   "schedules": [
-    { "id": 201, "courseId": 101, "dayOfWeek": 0, "timeRanges": [{ "startMinutes": 420, "endMinutes": 450 }, { "startMinutes": 720, "endMinutes": 750 }, { "startMinutes": 1080, "endMinutes": 1110 }], "room": "KITCHEN" },
-    { "id": 202, "courseId": 102, "dayOfWeek": 1, "timeRanges": [{ "startMinutes": 360, "endMinutes": 420 }, { "startMinutes": 1020, "endMinutes": 1080 }], "room": "RUANG TAMU" },
-    { "id": 203, "courseId": 103, "dayOfWeek": 0, "timeRanges": [{ "startMinutes": 1320, "endMinutes": 1440 }, { "startMinutes": 0, "endMinutes": 360 }], "room": "KAMAR TIDUR" }
+    { "id": 201, "courseId": 101, "dayOfWeek": 0, "timeRanges": [{ "startMinutes": 420, "endMinutes": 450 }, { "startMinutes": 720, "endMinutes": 750 }, { "startMinutes": 1080, "endMinutes": 1110 }], "room": "" },
+    { "id": 202, "courseId": 102, "dayOfWeek": 1, "timeRanges": [{ "startMinutes": 360, "endMinutes": 420 }, { "startMinutes": 1020, "endMinutes": 1080 }], "room": "" },
+    { "id": 203, "courseId": 103, "dayOfWeek": 0, "timeRanges": [{ "startMinutes": 1320, "endMinutes": 1440 }, { "startMinutes": 0, "endMinutes": 360 }], "room": "" }
   ]
 }
