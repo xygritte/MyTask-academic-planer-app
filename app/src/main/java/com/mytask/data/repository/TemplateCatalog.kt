@@ -38,7 +38,7 @@ class TemplateCatalog @Inject constructor(
         ),
         AppTemplate(
             id = "daily_life_starter",
-            version = 2,
+            version = 3,
             name = "Daily Life Starter",
             description = "Contoh kegiatan harian, ibadah, hubungan, produktivitas, dan musik dengan jadwal siap pakai.",
             category = "Kegiatan Harian",
