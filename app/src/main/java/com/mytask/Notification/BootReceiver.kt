@@ -3,6 +3,7 @@ package com.mytask.Notification
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import com.mytask.debug.AppDebugLog
 
 class BootReceiver : BroadcastReceiver() {
 
@@ -10,31 +11,11 @@ class BootReceiver : BroadcastReceiver() {
         context: Context,
         intent: Intent
     ) {
+        if (intent.action != Intent.ACTION_BOOT_COMPLETED) return
 
-        if (
-            intent.action ==
-            Intent.ACTION_BOOT_COMPLETED
-        ) {
-
-            /*
-             * HP baru selesai boot.
-             *
-             * Jangan menunggu 00.00.
-             * Langsung cek hari ini.
-             */
-
-            ReminderScheduler.syncToday(
-                context
-            )
-
-            /*
-             * Jadwalkan pergantian
-             * hari berikutnya.
-             */
-
-            ReminderScheduler.scheduleNextMidnight(
-                context
-            )
-        }
+        AppDebugLog.d("NOTIFICATION", "boot completed: restoring schedule alarms")
+        ReminderScheduler.syncToday(context)
+        ReminderScheduler.rescheduleAllStoredScheduleReminders(context)
+        ReminderScheduler.scheduleNextMidnight(context)
     }
 }
