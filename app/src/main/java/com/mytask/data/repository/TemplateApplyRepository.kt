@@ -11,9 +11,9 @@ import com.mytask.data.local.toScheduleTimeRangesOrNull
 import com.mytask.data.local.entity.CourseEntity
 import com.mytask.data.local.entity.ScheduleEntity
 import com.mytask.data.local.entity.TaskEntity
+import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.first
 import org.json.JSONArray
-import org.json.JSONObject
 import java.util.Calendar
 import java.util.Date
 import javax.inject.Inject
@@ -28,7 +28,7 @@ data class TemplateApplyResult(
 
 @Singleton
 class TemplateApplyRepository @Inject constructor(
-    private val context: Context,
+    @ApplicationContext private val context: Context,
     private val database: MyTaskDatabase,
     private val catalog: TemplateCatalog,
     private val preferences: TemplatePreferenceRepository
