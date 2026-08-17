@@ -4,9 +4,10 @@ import android.content.Context
 import androidx.room.Room
 import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
-import com.mytask.debug.AppDebugLog
 import com.mytask.data.local.MyTaskDatabase
+import com.mytask.data.local.entity.ScheduleEntity
 import com.mytask.data.local.entity.TaskEntity
+import com.mytask.data.local.toDisplayTime
 import com.mytask.data.repository.SettingsRepository
 import kotlinx.coroutines.flow.first
 import java.util.Calendar
@@ -41,8 +42,10 @@ class DailyReminderWorker(
             checkDeadlineTasks(tasks, reminderDays)
             ReminderScheduler.rescheduleAllTaskDeadlines(applicationContext, tasks)
 
-            // Do not post schedule notifications here. This worker only keeps the
-            // one-shot two-hour alarms registered for the next class occurrence.
+            // Schedule notifications are window-based: whenever the worker runs,
+            // an ongoing class notification is shown when the current time is
+            // anywhere inside the two-hour window before the class starts.
+            checkScheduleNotificationWindow(database, schedules)
             ReminderScheduler.rescheduleAllScheduleReminders(applicationContext, schedules)
             ReminderScheduler.scheduleNextMidnight(applicationContext)
 
@@ -55,6 +58,77 @@ class DailyReminderWorker(
             database.close()
             AppDebugLog.d("NOTIFICATION", "worker database closed")
         }
+    }
+
+    private suspend fun checkScheduleNotificationWindow(
+        database: MyTaskDatabase,
+        schedules: List<ScheduleEntity>
+    ) {
+        if (schedules.isEmpty()) return
+
+        val now = Calendar.getInstance()
+        val today = now.get(Calendar.DAY_OF_WEEK)
+        val nowMillis = now.timeInMillis
+        val windowStartMillis = nowMillis - (2 * 60 * 60 * 1000L)
+
+        val courses = database.courseDao().getAllCourses().first()
+
+        schedules
+            .filter { it.dayOfWeek == today }
+            .forEach { schedule ->
+                val start = Calendar.getInstance().apply {
+                    set(Calendar.HOUR_OF_DAY, schedule.startMinutes / 60)
+                    set(Calendar.MINUTE, schedule.startMinutes % 60)
+                    set(Calendar.SECOND, 0)
+                    set(Calendar.MILLISECOND, 0)
+                }
+
+                val startMillis = start.timeInMillis
+                val withinTwoHourWindow =
+                    nowMillis >= startMillis - (2 * 60 * 60 * 1000L) &&
+                        nowMillis < startMillis
+
+                if (!withinTwoHourWindow) {
+                    return@forEach
+                }
+
+                val remainingMinutes = ((startMillis - nowMillis) / 60_000L).coerceAtLeast(0L)
+                val hours = remainingMinutes / 60L
+                val minutes = remainingMinutes % 60L
+                val remainingText = when {
+                    hours > 0 && minutes > 0 -> "$hours jam $minutes menit"
+                    hours > 0 -> "$hours jam"
+                    else -> "$minutes menit"
+                }
+
+                val course = schedule.courseId?.let {
+                    courses.find { course -> course.id == it }
+                }
+
+                val message = buildString {
+                    append(schedule.startMinutes.toDisplayTime())
+                        .append(" - ")
+                        .append(schedule.endMinutes.toDisplayTime())
+                        .append("\n")
+                    append(course?.name ?: "Mata Kuliah")
+                    if (schedule.room.isNotBlank()) {
+                        append("\nRuangan: ").append(schedule.room)
+                    }
+                    append("\n\nMulai dalam ").append(remainingText).append(".")
+                }
+
+                NotificationHelper.showScheduleNotification(
+                    applicationContext,
+                    schedule.id.toString(),
+                    "🕒 Jadwal Kuliah",
+                    message
+                )
+
+                AppDebugLog.d(
+                    "NOTIFICATION",
+                    "schedule notification active-window scheduleId=${schedule.id} remainingMinutes=$remainingMinutes"
+                )
+            }
     }
 
     private fun checkActiveTasks(tasks: List<TaskEntity>) {
