@@ -1,0 +1,16 @@
+{
+  "app": "MyTask",
+  "template": "daily_prayer_schedule",
+  "version": 1,
+  "courses": [
+    {"id": 2001, "name": "Ibadah Harian", "code": "IBADAH", "lecturer": "", "room": ""}
+  ],
+  "tasks": [],
+  "schedules": [
+    {"id": 2001, "courseId": 2001, "dayOfWeek": 0, "timeRanges": [{"startMinutes": 270, "endMinutes": 285}], "room": ""},
+    {"id": 2002, "courseId": 2001, "dayOfWeek": 0, "timeRanges": [{"startMinutes": 720, "endMinutes": 735}], "room": ""},
+    {"id": 2003, "courseId": 2001, "dayOfWeek": 0, "timeRanges": [{"startMinutes": 915, "endMinutes": 930}], "room": ""},
+    {"id": 2004, "courseId": 2001, "dayOfWeek": 0, "timeRanges": [{"startMinutes": 1080, "endMinutes": 1095}], "room": ""},
+    {"id": 2005, "courseId": 2001, "dayOfWeek": 0, "timeRanges": [{"startMinutes": 1175, "endMinutes": 1190}], "room": ""}
+  ]
+}
