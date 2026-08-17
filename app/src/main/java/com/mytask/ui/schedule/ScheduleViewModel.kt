@@ -4,11 +4,13 @@ import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.mytask.Notification.ReminderScheduler
+import com.mytask.data.local.ScheduleTimeRange
 import com.mytask.data.local.entity.CourseEntity
 import com.mytask.data.local.entity.ScheduleEntity
+import com.mytask.data.local.toJsonString
 import com.mytask.data.repository.CourseRepository
 import com.mytask.data.repository.ScheduleRepository
-import dagger.hilt.android.qualifiers.ApplicationContext
+aimport dagger.hilt.android.qualifiers.ApplicationContext
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
 import kotlinx.coroutines.flow.SharingStarted
@@ -24,48 +26,40 @@ class ScheduleViewModel @Inject constructor(
 ) : ViewModel() {
 
     val schedules: StateFlow<List<ScheduleEntity>> =
-        scheduleRepository
-            .getAllSchedules()
+        scheduleRepository.getAllSchedules()
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     val courses: StateFlow<List<CourseEntity>> =
-        courseRepository
-            .getAllCourses()
+        courseRepository.getAllCourses()
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     fun getScheduleById(id: Long): StateFlow<ScheduleEntity?> =
-        scheduleRepository
-            .getScheduleById(id)
+        scheduleRepository.getScheduleById(id)
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
 
     fun addSchedule(
         courseId: Long?,
         dayOfWeek: Int,
-        startMinutes: Int,
-        endMinutes: Int,
+        timeRanges: List<ScheduleTimeRange>,
         room: String,
         onSaved: () -> Unit
     ) {
         viewModelScope.launch {
-            val id = scheduleRepository.addSchedule(
-                ScheduleEntity(
-                    courseId = courseId,
-                    dayOfWeek = dayOfWeek,
-                    startMinutes = startMinutes,
-                    endMinutes = endMinutes,
-                    room = room
-                )
+            if (timeRanges.isEmpty()) return@launch
+            val sortedRanges = timeRanges.sortedBy { it.startMinutes }
+            val firstRange = sortedRanges.first()
+            val schedule = ScheduleEntity(
+                courseId = courseId,
+                dayOfWeek = dayOfWeek,
+                startMinutes = firstRange.startMinutes,
+                endMinutes = firstRange.endMinutes,
+                room = room,
+                timeRangesJson = sortedRanges.toJsonString()
             )
+            val id = scheduleRepository.addSchedule(schedule)
             ReminderScheduler.scheduleScheduleReminder(
                 context,
-                ScheduleEntity(
-                    id = id,
-                    courseId = courseId,
-                    dayOfWeek = dayOfWeek,
-                    startMinutes = startMinutes,
-                    endMinutes = endMinutes,
-                    room = room
-                )
+                schedule.copy(id = id)
             )
             onSaved()
         }
