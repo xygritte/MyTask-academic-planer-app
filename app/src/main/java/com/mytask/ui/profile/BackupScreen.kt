@@ -146,7 +146,7 @@ fun BackupScreen(
             text = {
                 Text(
                     "Impor backup akan mengganti seluruh data MyTask yang sedang ada. " +
-                        "Ini berbeda dengan Template Bawaan yang hanya menambahkan data."
+                        "Ini berbeda dengan Template Bawaan yang hanya menambahkan mata kuliah dan jadwal."
                 )
             },
             confirmButton = {
@@ -187,12 +187,11 @@ fun BackupScreen(
                     state?.let {
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             AssistChip(onClick = {}, label = { Text("${it.courses} mata kuliah") })
-                            AssistChip(onClick = {}, label = { Text("${it.tasks} tugas") })
                             AssistChip(onClick = {}, label = { Text("${it.schedules} jadwal") })
                         }
                     }
                     Text(
-                        "Data yang sudah ada tidak akan dihapus. Template ditambahkan sebagai data baru dan notifikasi jadwal akan disinkronkan.",
+                        "Data yang sudah ada tidak akan dihapus. Template hanya menambahkan mata kuliah dan jadwal baru.",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -211,7 +210,7 @@ fun BackupScreen(
                                 val message = if (result.alreadyApplied) {
                                     "Template sudah pernah ditambahkan."
                                 } else {
-                                    "Template ditambahkan: ${result.addedCourses} mata kuliah, ${result.addedTasks} tugas, ${result.addedSchedules} jadwal."
+                                    "Template ditambahkan: ${result.addedCourses} mata kuliah, ${result.addedSchedules} jadwal."
                                 }
                                 Toast.makeText(context, message, Toast.LENGTH_LONG).show()
                             },
@@ -370,7 +369,7 @@ private fun TemplateCard(state: TemplateCardState, onClick: () -> Unit) {
             Text(state.template.name, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
             Text(state.template.description, style = MaterialTheme.typography.bodySmall, maxLines = 3)
             Text(
-                "${state.tasks} tugas • ${state.schedules} jadwal",
+                "${state.courses} mata kuliah • ${state.schedules} jadwal",
                 style = MaterialTheme.typography.labelMedium,
                 color = MaterialTheme.colorScheme.primary
             )
