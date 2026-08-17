@@ -2,6 +2,7 @@ package com.mytask.data.repository
 
 import android.content.Context
 import androidx.room.withTransaction
+import com.google.firebase.auth.FirebaseAuth
 import com.mytask.Notification.ReminderScheduler
 import com.mytask.data.local.MyTaskDatabase
 import com.mytask.data.local.ScheduleTimeRange
@@ -12,7 +13,6 @@ import com.mytask.data.local.entity.CourseEntity
 import com.mytask.data.local.entity.ScheduleEntity
 import com.mytask.data.local.entity.TaskEntity
 import dagger.hilt.android.qualifiers.ApplicationContext
-import kotlinx.coroutines.flow.first
 import org.json.JSONArray
 import java.util.Calendar
 import java.util.Date
@@ -35,7 +35,8 @@ class TemplateApplyRepository @Inject constructor(
 ) {
 
     suspend fun apply(template: AppTemplate): TemplateApplyResult {
-        if (preferences.isTemplateApplied(template.id, template.version)) {
+        val uid = FirebaseAuth.getInstance().currentUser?.uid ?: "guest"
+        if (preferences.isTemplateApplied(uid, template.id, template.version)) {
             return TemplateApplyResult(true, 0, 0, 0)
         }
 
@@ -147,7 +148,7 @@ class TemplateApplyRepository @Inject constructor(
             result = TemplateApplyResult(false, addedCourses, tasks.size, schedules.size)
         }
 
-        preferences.markTemplateApplied(template.id, template.version)
+        preferences.markTemplateApplied(uid, template.id, template.version)
         ReminderScheduler.initialize(context)
         return result
     }
