@@ -42,9 +42,6 @@ class DailyReminderWorker(
             checkDeadlineTasks(tasks, reminderDays)
             ReminderScheduler.rescheduleAllTaskDeadlines(applicationContext, tasks)
 
-            // Schedule notifications are window-based: whenever the worker runs,
-            // an ongoing class notification is shown when the current time is
-            // anywhere inside the two-hour window before the class starts.
             checkScheduleNotificationWindow(database, schedules)
             ReminderScheduler.rescheduleAllScheduleReminders(applicationContext, schedules)
             ReminderScheduler.scheduleNextMidnight(applicationContext)
@@ -69,8 +66,7 @@ class DailyReminderWorker(
         val now = Calendar.getInstance()
         val today = now.get(Calendar.DAY_OF_WEEK)
         val nowMillis = now.timeInMillis
-        val windowStartMillis = nowMillis - (2 * 60 * 60 * 1000L)
-
+        val twoHoursMillis = ReminderScheduler.TWO_HOURS_MILLIS
         val courses = database.courseDao().getAllCourses().first()
 
         schedules
@@ -85,24 +81,18 @@ class DailyReminderWorker(
 
                 val startMillis = start.timeInMillis
                 val withinTwoHourWindow =
-                    nowMillis >= startMillis - (2 * 60 * 60 * 1000L) &&
+                    nowMillis >= startMillis - twoHoursMillis &&
                         nowMillis < startMillis
 
-                if (!withinTwoHourWindow) {
-                    return@forEach
-                }
+                if (!withinTwoHourWindow) return@forEach
 
-                val remainingMinutes = ((startMillis - nowMillis) / 60_000L).coerceAtLeast(0L)
-                val hours = remainingMinutes / 60L
-                val minutes = remainingMinutes % 60L
-                val remainingText = when {
-                    hours > 0 && minutes > 0 -> "$hours jam $minutes menit"
-                    hours > 0 -> "$hours jam"
-                    else -> "$minutes menit"
-                }
+                val remainingMillis = startMillis - nowMillis
+                val remainingMinutes = TimeUnit.MILLISECONDS
+                    .toMinutes(remainingMillis + 59_999L)
+                    .coerceAtLeast(1L)
 
-                val course = schedule.courseId?.let {
-                    courses.find { course -> course.id == it }
+                val course = schedule.courseId?.let { courseId ->
+                    courses.find { course -> course.id == courseId }
                 }
 
                 val message = buildString {
@@ -114,14 +104,24 @@ class DailyReminderWorker(
                     if (schedule.room.isNotBlank()) {
                         append("\nRuangan: ").append(schedule.room)
                     }
-                    append("\n\nMulai dalam ").append(remainingText).append(".")
+                    append("\n\nKuliah yang akan datang ")
+                        .append(remainingMinutes)
+                        .append(" menit lagi.")
                 }
 
                 NotificationHelper.showScheduleNotification(
                     applicationContext,
                     schedule.id.toString(),
-                    "🕒 Jadwal Kuliah",
+                    "🕒 Kuliah yang akan datang ${remainingMinutes} menit lagi",
                     message
+                )
+
+                // Start/continue the silent one-minute countdown using the same
+                // notification ID. The user sees the number change without a
+                // new notification sound/vibration every minute.
+                ReminderScheduler.scheduleCountdownTick(
+                    applicationContext,
+                    schedule.id
                 )
 
                 AppDebugLog.d(
