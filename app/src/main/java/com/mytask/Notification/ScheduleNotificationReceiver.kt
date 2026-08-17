@@ -5,6 +5,8 @@ import android.content.Context
 import android.content.Intent
 import androidx.room.Room
 import com.mytask.data.local.MyTaskDatabase
+import com.mytask.data.local.getTimeRanges
+import com.mytask.data.local.toDisplayTime
 import com.mytask.data.repository.SettingsRepository
 import com.mytask.debug.AppDebugLog
 import kotlinx.coroutines.CoroutineScope
@@ -40,10 +42,7 @@ class ScheduleNotificationReceiver : BroadcastReceiver() {
                 try {
                     val schedule = database.scheduleDao().getScheduleById(scheduleId).first()
                     if (schedule == null) {
-                        AppDebugLog.d(
-                            "NOTIFICATION",
-                            "schedule alarm ignored: schedule missing id=$scheduleId"
-                        )
+                        AppDebugLog.d("NOTIFICATION", "schedule alarm ignored: schedule missing id=$scheduleId")
                         return@launch
                     }
 
