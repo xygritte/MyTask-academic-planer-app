@@ -27,7 +27,6 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -53,14 +52,14 @@ fun AcademicTemplateDialog(
     val context = LocalContext.current.applicationContext
     val catalog = remember(context) { TemplateCatalog(context) }
     val templates = remember(catalog) { catalog.templates }
-    var selectedTemplateId by remember { mutableStateOf<String?>(null) }
+    var selectedTemplateIds by remember { mutableStateOf<Set<String>>(emptySet()) }
 
-    val selectedTemplate = templates.firstOrNull { it.id == selectedTemplateId }
+    val selectedTemplates = templates.filter { it.id in selectedTemplateIds }
+    val totalCourses = selectedTemplates.sumOf { runCatching { catalog.preview(it).courses }.getOrDefault(0) }
+    val totalSchedules = selectedTemplates.sumOf { runCatching { catalog.preview(it).schedules }.getOrDefault(0) }
 
     AlertDialog(
-        onDismissRequest = {
-            if (!isApplying) onSkip()
-        },
+        onDismissRequest = { if (!isApplying) onSkip() },
         icon = {
             Icon(
                 imageVector = Icons.Default.CheckCircle,
@@ -69,10 +68,7 @@ fun AcademicTemplateDialog(
             )
         },
         title = {
-            Text(
-                text = "Pilih template MyTask",
-                fontWeight = FontWeight.Bold
-            )
+            Text("Pilih template MyTask", fontWeight = FontWeight.Bold)
         },
         text = {
             Column(
@@ -82,7 +78,7 @@ fun AcademicTemplateDialog(
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 Text(
-                    text = "Pilih data awal yang ingin ditambahkan. Template tidak menghapus data yang sudah ada dan dapat digunakan kembali kapan saja.",
+                    "Pilih satu atau beberapa template sekaligus. Semua pilihan akan menambahkan data baru dan tidak menghapus data yang sudah ada.",
                     style = MaterialTheme.typography.bodyMedium
                 )
 
@@ -94,36 +90,60 @@ fun AcademicTemplateDialog(
                     verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
                     templates.forEach { template ->
-                        val preview = runCatching { catalog.preview(template) }.getOrDefault(com.mytask.data.repository.TemplatePreview(0, 0))
-                        val selected = template.id == selectedTemplateId
+                        val preview = runCatching { catalog.preview(template) }
+                            .getOrDefault(com.mytask.data.repository.TemplatePreview(0, 0))
+                        val selected = template.id in selectedTemplateIds
                         TemplateOptionCard(
                             template = template,
                             courses = preview.courses,
                             schedules = preview.schedules,
                             selected = selected,
                             enabled = !isApplying,
-                            onClick = { selectedTemplateId = template.id }
+                            onClick = {
+                                selectedTemplateIds = if (selected) {
+                                    selectedTemplateIds - template.id
+                                } else {
+                                    selectedTemplateIds + template.id
+                                }
+                            }
                         )
                     }
                 }
 
-                Surface(
-                    modifier = Modifier.fillMaxWidth(),
-                    color = MaterialTheme.colorScheme.surfaceVariant,
-                    shape = MaterialTheme.shapes.medium
-                ) {
+                if (selectedTemplates.isNotEmpty()) {
+                    Surface(
+                        modifier = Modifier.fillMaxWidth(),
+                        color = MaterialTheme.colorScheme.primaryContainer,
+                        shape = MaterialTheme.shapes.medium
+                    ) {
+                        Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Text(
+                                "${selectedTemplates.size} template dipilih",
+                                fontWeight = FontWeight.Bold
+                            )
+                            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                                TemplateCount(Icons.Default.MenuBook, totalCourses, "mata kuliah")
+                                TemplateCount(Icons.Default.CalendarMonth, totalSchedules, "jadwal")
+                            }
+                        }
+                    }
+                } else {
                     Text(
-                        text = selectedTemplate?.let { "Dipilih: ${it.name}" }
-                            ?: "Belum ada template yang dipilih.",
+                        "Belum ada template yang dipilih.",
                         style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(12.dp)
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
 
+                Text(
+                    "Template dapat digunakan kembali kapan saja dari Backup & Data.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+
                 if (!errorMessage.isNullOrBlank()) {
                     Text(
-                        text = errorMessage,
+                        errorMessage,
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.error
                     )
@@ -133,12 +153,10 @@ fun AcademicTemplateDialog(
         confirmButton = {
             Button(
                 onClick = {
-                    selectedTemplate?.let {
-                        TemplateSelectionStore.select(it)
-                        onApply()
-                    }
+                    TemplateSelectionStore.selectAll(selectedTemplates)
+                    onApply()
                 },
-                enabled = selectedTemplate != null && !isApplying
+                enabled = selectedTemplates.isNotEmpty() && !isApplying
             ) {
                 if (isApplying) {
                     CircularProgressIndicator(
@@ -148,14 +166,14 @@ fun AcademicTemplateDialog(
                     )
                     Spacer(Modifier.width(8.dp))
                 }
-                Text(if (isApplying) "Menerapkan..." else "Terapkan pilihan")
+                Text(
+                    if (isApplying) "Menerapkan..."
+                    else "Terapkan ${selectedTemplates.size} template"
+                )
             }
         },
         dismissButton = {
-            OutlinedButton(
-                onClick = onSkip,
-                enabled = !isApplying
-            ) {
+            OutlinedButton(onClick = onSkip, enabled = !isApplying) {
                 Text("Lewati")
             }
         }
@@ -196,45 +214,19 @@ private fun TemplateOptionCard(
                 .padding(14.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Text(
-                text = template.icon,
-                style = MaterialTheme.typography.headlineSmall
-            )
-
+            Text(template.icon, style = MaterialTheme.typography.headlineSmall)
             Spacer(Modifier.width(12.dp))
-
             Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = template.name,
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold
-                )
-                Text(
-                    text = template.category,
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.primary
-                )
+                Text(template.name, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                Text(template.category, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
                 Spacer(Modifier.height(2.dp))
-                Text(
-                    text = template.description,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
+                Text(template.description, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Spacer(Modifier.height(6.dp))
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    TemplateCount(
-                        icon = Icons.Default.MenuBook,
-                        value = courses,
-                        label = "mata kuliah"
-                    )
-                    TemplateCount(
-                        icon = Icons.Default.CalendarMonth,
-                        value = schedules,
-                        label = "jadwal"
-                    )
+                    TemplateCount(Icons.Default.MenuBook, courses, "mata kuliah")
+                    TemplateCount(Icons.Default.CalendarMonth, schedules, "jadwal")
                 }
             }
-
             if (selected) {
                 Icon(
                     imageVector = Icons.Default.CheckCircle,
@@ -254,17 +246,8 @@ private fun TemplateCount(
     label: String
 ) {
     Row(verticalAlignment = Alignment.CenterVertically) {
-        Icon(
-            imageVector = icon,
-            contentDescription = null,
-            modifier = Modifier.size(15.dp),
-            tint = MaterialTheme.colorScheme.onSurfaceVariant
-        )
+        Icon(icon, contentDescription = null, modifier = Modifier.size(15.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
         Spacer(Modifier.width(4.dp))
-        Text(
-            text = "$value $label",
-            style = MaterialTheme.typography.labelSmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
-        )
+        Text("$value $label", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
