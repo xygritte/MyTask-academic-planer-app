@@ -11,6 +11,7 @@ import com.mytask.debug.AuthDebugLog
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
+import java.security.MessageDigest
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -37,6 +38,7 @@ class UserProfileRepository @Inject constructor(
         private val LAST_CLOUD_UPDATED_AT_KEY = longPreferencesKey("last_cloud_updated_at")
         private val LAST_CLOUD_DATA_HASH_KEY = stringPreferencesKey("last_cloud_data_hash")
         private val LAST_PROFILE_UPDATED_AT_KEY = longPreferencesKey("last_profile_updated_at")
+        private val LAST_PROFILE_HASH_KEY = stringPreferencesKey("last_profile_hash")
     }
 
     val profile: Flow<UserProfile?> =
@@ -73,6 +75,10 @@ class UserProfileRepository @Inject constructor(
         context.userProfileDataStore.data
             .map { preferences -> preferences[LAST_PROFILE_UPDATED_AT_KEY] ?: 0L }
 
+    val lastProfileHash: Flow<String?> =
+        context.userProfileDataStore.data
+            .map { preferences -> preferences[LAST_PROFILE_HASH_KEY] }
+
     suspend fun saveProfile(uid: String, name: String, program: String) {
         val updatedAt = System.currentTimeMillis()
         saveProfileInternal(uid, name, program, updatedAt)
@@ -86,23 +92,29 @@ class UserProfileRepository @Inject constructor(
     }
 
     private suspend fun saveProfileInternal(uid: String, name: String, program: String, updatedAt: Long) {
+        val cleanName = name.trim()
+        val cleanProgram = program.trim()
         context.userProfileDataStore.edit { preferences ->
             preferences[UID_KEY] = uid.trim()
-            preferences[NAME_KEY] = name.trim()
-            preferences[PROGRAM_KEY] = program.trim()
+            preferences[NAME_KEY] = cleanName
+            preferences[PROGRAM_KEY] = cleanProgram
             preferences[LAST_PROFILE_UPDATED_AT_KEY] = updatedAt
+            preferences[LAST_PROFILE_HASH_KEY] = profileHash(cleanName, cleanProgram)
         }
         AuthDebugLog.d(
-            "PROFILE_STORE save: uid=${AuthDebugLog.uid(uid)} namePresent=${name.isNotBlank()} programPresent=${program.isNotBlank()} updatedAt=$updatedAt"
+            "PROFILE_STORE save: uid=${AuthDebugLog.uid(uid)} namePresent=${cleanName.isNotBlank()} programPresent=${cleanProgram.isNotBlank()} updatedAt=$updatedAt"
         )
     }
 
     suspend fun saveAuthenticatedSession(uid: String, name: String, program: String) {
+        val cleanName = name.trim()
+        val cleanProgram = program.trim()
         context.userProfileDataStore.edit { preferences ->
             preferences[UID_KEY] = uid.trim()
-            preferences[NAME_KEY] = name.trim()
-            preferences[PROGRAM_KEY] = program.trim()
+            preferences[NAME_KEY] = cleanName
+            preferences[PROGRAM_KEY] = cleanProgram
             preferences[LAST_PROFILE_UPDATED_AT_KEY] = System.currentTimeMillis()
+            preferences[LAST_PROFILE_HASH_KEY] = profileHash(cleanName, cleanProgram)
             preferences[RESTORE_PENDING_KEY] = true
         }
         AuthDebugLog.d(
@@ -170,7 +182,15 @@ class UserProfileRepository @Inject constructor(
             preferences.remove(LAST_CLOUD_UPDATED_AT_KEY)
             preferences.remove(LAST_CLOUD_DATA_HASH_KEY)
             preferences.remove(LAST_PROFILE_UPDATED_AT_KEY)
+            preferences.remove(LAST_PROFILE_HASH_KEY)
         }
         AuthDebugLog.d("PROFILE_STORE clearProfile")
+    }
+
+    private fun profileHash(name: String, program: String): String {
+        val value = "$name\u0000$program"
+        return MessageDigest.getInstance("SHA-256")
+            .digest(value.toByteArray(Charsets.UTF_8))
+            .joinToString("") { byte -> "%02x".format(byte) }
     }
 }
