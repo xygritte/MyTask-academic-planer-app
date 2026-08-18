@@ -297,7 +297,7 @@ private fun MyTaskApp(
         val templateUid = sessionUid ?: currentFirebaseUser?.uid ?: "guest"
         Box(modifier = Modifier.fillMaxSize()) {
             MyTaskMainContent(
-                profile = profile,
+                profile = activeProfile,
                 canSaveOnline = currentFirebaseUser != null && networkAvailable,
                 isSavingOnline = isSavingOnline || isAutoSyncing || !networkAvailable,
                 onlineSaveMessage = onlineSaveMessage,
