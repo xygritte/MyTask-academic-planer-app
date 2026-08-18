@@ -36,6 +36,7 @@ class UserProfileRepository @Inject constructor(
         private val RESTORE_PENDING_KEY = booleanPreferencesKey("restore_cloud_data_pending")
         private val LAST_CLOUD_UPDATED_AT_KEY = longPreferencesKey("last_cloud_updated_at")
         private val LAST_CLOUD_DATA_HASH_KEY = stringPreferencesKey("last_cloud_data_hash")
+        private val LAST_PROFILE_UPDATED_AT_KEY = longPreferencesKey("last_profile_updated_at")
     }
 
     val profile: Flow<UserProfile?> =
@@ -68,14 +69,31 @@ class UserProfileRepository @Inject constructor(
         context.userProfileDataStore.data
             .map { preferences -> preferences[LAST_CLOUD_DATA_HASH_KEY] }
 
+    val lastProfileUpdatedAt: Flow<Long> =
+        context.userProfileDataStore.data
+            .map { preferences -> preferences[LAST_PROFILE_UPDATED_AT_KEY] ?: 0L }
+
     suspend fun saveProfile(uid: String, name: String, program: String) {
+        val updatedAt = System.currentTimeMillis()
+        saveProfileInternal(uid, name, program, updatedAt)
+    }
+
+    suspend fun saveProfileFromCloud(uid: String, name: String, program: String, updatedAt: Long) {
+        saveProfileInternal(uid, name, program, updatedAt)
+        AuthDebugLog.d(
+            "PROFILE_STORE cloud profile applied: uid=${AuthDebugLog.uid(uid)} updatedAt=$updatedAt"
+        )
+    }
+
+    private suspend fun saveProfileInternal(uid: String, name: String, program: String, updatedAt: Long) {
         context.userProfileDataStore.edit { preferences ->
             preferences[UID_KEY] = uid.trim()
             preferences[NAME_KEY] = name.trim()
             preferences[PROGRAM_KEY] = program.trim()
+            preferences[LAST_PROFILE_UPDATED_AT_KEY] = updatedAt
         }
         AuthDebugLog.d(
-            "PROFILE_STORE save: uid=${AuthDebugLog.uid(uid)} namePresent=${name.isNotBlank()} programPresent=${program.isNotBlank()}"
+            "PROFILE_STORE save: uid=${AuthDebugLog.uid(uid)} namePresent=${name.isNotBlank()} programPresent=${program.isNotBlank()} updatedAt=$updatedAt"
         )
     }
 
@@ -84,6 +102,7 @@ class UserProfileRepository @Inject constructor(
             preferences[UID_KEY] = uid.trim()
             preferences[NAME_KEY] = name.trim()
             preferences[PROGRAM_KEY] = program.trim()
+            preferences[LAST_PROFILE_UPDATED_AT_KEY] = System.currentTimeMillis()
             preferences[RESTORE_PENDING_KEY] = true
         }
         AuthDebugLog.d(
@@ -150,6 +169,7 @@ class UserProfileRepository @Inject constructor(
             preferences.remove(RESTORE_PENDING_KEY)
             preferences.remove(LAST_CLOUD_UPDATED_AT_KEY)
             preferences.remove(LAST_CLOUD_DATA_HASH_KEY)
+            preferences.remove(LAST_PROFILE_UPDATED_AT_KEY)
         }
         AuthDebugLog.d("PROFILE_STORE clearProfile")
     }
