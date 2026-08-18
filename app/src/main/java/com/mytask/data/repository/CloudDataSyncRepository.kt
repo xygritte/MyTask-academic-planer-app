@@ -110,12 +110,105 @@ class CloudDataSyncRepository @Inject constructor(
         }
     }
 
+    /**
+     * Bidirectional sync used by startup, pull-to-refresh, manual save, and logout.
+     * The latest known cloud version wins when it is newer than the last synced version.
+     * Local changes win when the local synced version is newer. A changed cloud snapshot
+     * with the same version is accepted only when the local workspace has not changed.
+     */
     suspend fun uploadCurrentData(uid: String) {
         require(uid.isNotBlank())
         if (!isNetworkAvailable()) {
             throw IllegalStateException("Tidak ada koneksi internet. Hubungkan internet lalu coba lagi.")
         }
-        uploadJson(uid, databaseJson.first())
+
+        val localJson = databaseJson.first()
+        val localHash = sha256(localJson)
+        val lastSyncedUpdatedAt = userProfileRepository.lastCloudUpdatedAt.first()
+        val lastSyncedHash = userProfileRepository.lastCloudDataHash.first().orEmpty()
+
+        val snapshot = withTimeout(CLOUD_TIMEOUT_MS) { document(uid).get().await() }
+        val cloudJson = snapshot.getString("dataJson")
+        val cloudUpdatedAt = snapshot.getLong("updatedAt") ?: 0L
+        val cloudExists = snapshot.exists() && !cloudJson.isNullOrBlank()
+        val cloudHash = cloudJson?.let(::sha256).orEmpty()
+
+        if (!cloudExists) {
+            if (localHash == lastSyncedHash && lastSyncedHash.isNotBlank()) {
+                AuthDebugLog.d("CLOUD_SYNC unchanged but cloud document is empty; publishing last known local snapshot")
+            }
+            uploadJson(uid, localJson)
+            return
+        }
+
+        if (cloudUpdatedAt > lastSyncedUpdatedAt) {
+            AuthDebugLog.d("CLOUD_SYNC cloud newer: cloud=$cloudUpdatedAt localLast=$lastSyncedUpdatedAt -> download")
+            applyCloudSnapshot(uid, cloudJson, cloudUpdatedAt)
+            return
+        }
+
+        if (cloudUpdatedAt == lastSyncedUpdatedAt) {
+            if (cloudHash == localHash) {
+                AuthDebugLog.d("CLOUD_SYNC unchanged: updatedAt=$cloudUpdatedAt")
+                return
+            }
+
+            if (localHash == lastSyncedHash) {
+                AuthDebugLog.d("CLOUD_SYNC cloud content changed without newer timestamp; local unchanged -> download")
+                applyCloudSnapshot(uid, cloudJson, cloudUpdatedAt)
+                return
+            }
+
+            saveConflictBackup(uid, localJson)
+            throw CloudSyncConflictException(
+                "Data lokal dan online sama-sama berubah. Sinkronisasi dihentikan untuk mencegah data tertimpa."
+            )
+        }
+
+        // Cloud timestamp is older than the last synchronized version. The local snapshot
+        // represents the newer known version, so publish it again as a new cloud version.
+        AuthDebugLog.d("CLOUD_SYNC cloud older: cloud=$cloudUpdatedAt localLast=$lastSyncedUpdatedAt -> upload local")
+        uploadLatestLocalSnapshot(uid, localJson, localHash, cloudUpdatedAt)
+    }
+
+    private suspend fun uploadLatestLocalSnapshot(
+        uid: String,
+        json: String,
+        dataHash: String,
+        expectedCloudUpdatedAt: Long
+    ) {
+        val newUpdatedAt = try {
+            withTimeout(CLOUD_TIMEOUT_MS) {
+                firestore.runTransaction { transaction ->
+                    val reference = document(uid)
+                    val snapshot = transaction.get(reference)
+                    val currentUpdatedAt = snapshot.getLong("updatedAt") ?: 0L
+
+                    if (currentUpdatedAt != expectedCloudUpdatedAt) {
+                        throw CloudSyncConflictException()
+                    }
+
+                    val version = maxOf(System.currentTimeMillis(), currentUpdatedAt + 1L)
+                    transaction.set(
+                        reference,
+                        mapOf("uid" to uid, "dataJson" to json, "updatedAt" to version)
+                    )
+                    version
+                }.await()
+            }
+        } catch (error: Throwable) {
+            if (error is CloudSyncConflictException) {
+                saveConflictBackup(uid, json)
+                throw CloudSyncConflictException(
+                    "Data online berubah selama sinkronisasi. Data lokal tetap dipertahankan dan perlu disinkronkan ulang."
+                )
+            }
+            throw error
+        }
+
+        saveLocalJson(uid, json)
+        userProfileRepository.saveCloudSyncState(newUpdatedAt, dataHash)
+        AuthDebugLog.d("CLOUD_SYNC local published as latest: uid=${AuthDebugLog.uid(uid)} updatedAt=$newUpdatedAt")
     }
 
     suspend fun uploadJson(uid: String, json: String) {
@@ -126,7 +219,7 @@ class CloudDataSyncRepository @Inject constructor(
 
         val dataHash = sha256(json)
         val lastSyncedUpdatedAt = userProfileRepository.lastCloudUpdatedAt.first()
-        val lastSyncedHash = userProfileRepository.lastCloudDataHash.first()
+        val lastSyncedHash = userProfileRepository.lastCloudDataHash.first().orEmpty()
 
         if (lastSyncedHash == dataHash && lastSyncedHash.isNotBlank()) {
             AuthDebugLog.d("CLOUD_UPLOAD skipped unchanged snapshot: uid=${AuthDebugLog.uid(uid)} updatedAt=$lastSyncedUpdatedAt")
@@ -159,8 +252,6 @@ class CloudDataSyncRepository @Inject constructor(
             AuthDebugLog.d("CLOUD_UPLOAD success: uid=${AuthDebugLog.uid(uid)} updatedAt=$newUpdatedAt")
         } catch (error: Throwable) {
             if (error is CloudSyncConflictException) {
-                // Never discard the user's unsynced local workspace. Keep a rolling internal
-                // conflict backup, then recover the workspace from the authoritative cloud snapshot.
                 saveConflictBackup(uid, json)
                 try {
                     resyncFromCloud(uid)
