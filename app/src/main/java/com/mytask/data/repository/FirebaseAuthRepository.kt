@@ -61,8 +61,6 @@ class FirebaseAuthRepository @Inject constructor(
     ): Result<UserProfile> {
         return try {
             AuthDebugLog.d("REGISTER start")
-            // Write the restore gate BEFORE Firebase creates the authenticated session.
-            // This prevents AuthState from exposing a usable account before restore is ready.
             userProfileRepository.markCloudRestorePending()
 
             val user = auth.createUserWithEmailAndPassword(email.trim(), password).await().user
@@ -79,13 +77,14 @@ class FirebaseAuthRepository @Inject constructor(
             ).await()
 
             withContext(NonCancellable) {
-                userProfileRepository.saveAuthenticatedSession(
+                val cloudUpdatedAt = saveCloudProfile(user, profile)
+                userProfileRepository.saveProfileFromCloud(
                     uid = user.uid,
                     name = profile.name,
-                    program = profile.program
+                    program = profile.program,
+                    updatedAt = cloudUpdatedAt
                 )
-                runCatching { saveCloudProfile(user, profile) }
-                    .onFailure { AuthDebugLog.e("REGISTER Firestore profile save failed", it) }
+                userProfileRepository.markCloudRestorePending()
             }
             Result.success(profile)
         } catch (error: Throwable) {
@@ -107,7 +106,6 @@ class FirebaseAuthRepository @Inject constructor(
     suspend fun login(email: String, password: String): Result<UserProfile> {
         return try {
             AuthDebugLog.d("EMAIL_LOGIN start")
-            // Establish the gate before FirebaseAuth can publish the new user through AuthState.
             userProfileRepository.markCloudRestorePending()
 
             val user = auth.signInWithEmailAndPassword(email.trim(), password).await().user
@@ -145,7 +143,6 @@ class FirebaseAuthRepository @Inject constructor(
     suspend fun signInWithGoogle(context: Context): Result<UserProfile> {
         return try {
             AuthDebugLog.d("GOOGLE_LOGIN start")
-            // Establish the restore gate before Google/Firebase authentication completes.
             userProfileRepository.markCloudRestorePending()
 
             val credentialManager = CredentialManager.create(context)
@@ -182,7 +179,8 @@ class FirebaseAuthRepository @Inject constructor(
                         fallback
                     } else {
                         runCatching {
-                            saveCloudProfile(user, fallback)
+                            val timestamp = saveCloudProfile(user, fallback)
+                            userProfileRepository.saveProfileFromCloud(user.uid, fallback.name, fallback.program, timestamp)
                             AuthDebugLog.d("GOOGLE_LOGIN new Firestore profile saved")
                         }.onFailure {
                             AuthDebugLog.e("GOOGLE_LOGIN new Firestore profile save failed", it)
@@ -240,6 +238,62 @@ class FirebaseAuthRepository @Inject constructor(
         }
     }
 
+    /** Syncs only the user profile document. Latest updatedAt wins. */
+    suspend fun syncCurrentUserProfile(): Result<UserProfile> {
+        val user = auth.currentUser
+            ?: return Result.failure(IllegalStateException("Belum ada pengguna yang login."))
+
+        return try {
+            val document = firestore.collection("users").document(user.uid).get().await()
+            val cloudName = document.getString("name")?.trim().orEmpty()
+            val cloudProgram = document.getString("program")?.trim().orEmpty()
+            val cloudUpdatedAt = document.getLong("updatedAt") ?: 0L
+            val localUpdatedAt = userProfileRepository.lastProfileUpdatedAt.first()
+            val localProfile = userProfileRepository.profile.first()
+
+            when {
+                cloudName.isBlank() || cloudProgram.isBlank() -> {
+                    Result.failure(IllegalStateException("Profil online belum lengkap."))
+                }
+                cloudUpdatedAt > localUpdatedAt -> {
+                    val profile = UserProfile(cloudName, cloudProgram)
+                    user.updateProfile(
+                        UserProfileChangeRequest.Builder().setDisplayName(profile.name).build()
+                    ).await()
+                    userProfileRepository.saveProfileFromCloud(
+                        uid = user.uid,
+                        name = profile.name,
+                        program = profile.program,
+                        updatedAt = cloudUpdatedAt
+                    )
+                    AuthDebugLog.d("PROFILE_SYNC cloud wins: cloudUpdatedAt=$cloudUpdatedAt localUpdatedAt=$localUpdatedAt")
+                    Result.success(profile)
+                }
+                localProfile != null && localUpdatedAt > cloudUpdatedAt -> {
+                    val cloudTimestamp = saveCloudProfile(user, localProfile)
+                    userProfileRepository.saveProfileFromCloud(
+                        uid = user.uid,
+                        name = localProfile.name,
+                        program = localProfile.program,
+                        updatedAt = cloudTimestamp
+                    )
+                    AuthDebugLog.d("PROFILE_SYNC local wins: localUpdatedAt=$localUpdatedAt cloudUpdatedAt=$cloudUpdatedAt")
+                    Result.success(localProfile)
+                }
+                localProfile != null -> {
+                    Result.success(localProfile)
+                }
+                else -> {
+                    Result.failure(IllegalStateException("Profil lokal belum tersedia."))
+                }
+            }
+        } catch (error: Throwable) {
+            if (error is CancellationException) throw error
+            AuthDebugLog.e("PROFILE_SYNC failed", error)
+            Result.failure(error)
+        }
+    }
+
     suspend fun updateCurrentUserProfile(name: String, program: String): Result<UserProfile> {
         val user = auth.currentUser
             ?: return Result.failure(IllegalStateException("Belum ada pengguna yang login."))
@@ -253,8 +307,13 @@ class FirebaseAuthRepository @Inject constructor(
                 user.updateProfile(
                     UserProfileChangeRequest.Builder().setDisplayName(cleanName).build()
                 ).await()
-                saveCloudProfile(user, UserProfile(cleanName, cleanProgram))
-                userProfileRepository.saveProfile(user.uid, cleanName, cleanProgram)
+                val cloudTimestamp = saveCloudProfile(user, UserProfile(cleanName, cleanProgram))
+                userProfileRepository.saveProfileFromCloud(
+                    uid = user.uid,
+                    name = cleanName,
+                    program = cleanProgram,
+                    updatedAt = cloudTimestamp
+                )
             }
             AuthDebugLog.d(
                 "PROFILE_UPDATE online success: uid=${AuthDebugLog.uid(user.uid)} nameLength=${cleanName.length} programLength=${cleanProgram.length}"
@@ -270,8 +329,6 @@ class FirebaseAuthRepository @Inject constructor(
         AuthDebugLog.d("LOGOUT start: currentUid=${AuthDebugLog.uid(auth.currentUser?.uid)}")
         val user = auth.currentUser
         if (user != null) {
-            // Persist the latest local Room snapshot before it is destroyed. The next login
-            // restores this snapshot, so local edits cannot disappear during logout/login.
             cloudDataSyncRepository.uploadCurrentData(user.uid)
         }
         cloudDataSyncRepository.clearLocalSessionData()
@@ -289,17 +346,19 @@ class FirebaseAuthRepository @Inject constructor(
         program = "Program Studi belum diatur"
     )
 
-    private suspend fun saveCloudProfile(user: FirebaseUser, profile: UserProfile) {
+    private suspend fun saveCloudProfile(user: FirebaseUser, profile: UserProfile): Long {
+        val updatedAt = System.currentTimeMillis()
         firestore.collection("users").document(user.uid).set(
             mapOf(
                 "uid" to user.uid,
                 "name" to profile.name,
                 "program" to profile.program,
                 "email" to user.email,
-                "updatedAt" to System.currentTimeMillis()
+                "updatedAt" to updatedAt
             ),
             SetOptions.merge()
         ).await()
+        return updatedAt
     }
 
     private suspend fun loadCloudProfile(user: FirebaseUser): UserProfile {
