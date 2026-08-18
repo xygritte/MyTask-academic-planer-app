@@ -21,6 +21,7 @@ import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.tasks.await
 import kotlinx.coroutines.withContext
+import java.security.MessageDigest
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -238,7 +239,7 @@ class FirebaseAuthRepository @Inject constructor(
         }
     }
 
-    /** Syncs only the user profile document. Latest updatedAt wins. */
+    /** Syncs only the user profile document. Latest change wins, using timestamp with content-hash fallback. */
     suspend fun syncCurrentUserProfile(): Result<UserProfile> {
         val user = auth.currentUser
             ?: return Result.failure(IllegalStateException("Belum ada pengguna yang login."))
@@ -249,13 +250,43 @@ class FirebaseAuthRepository @Inject constructor(
             val cloudProgram = document.getString("program")?.trim().orEmpty()
             val cloudUpdatedAt = document.getLong("updatedAt") ?: 0L
             val localUpdatedAt = userProfileRepository.lastProfileUpdatedAt.first()
+            val lastSyncedHash = userProfileRepository.lastProfileHash.first()
             val localProfile = userProfileRepository.profile.first()
+            val cloudHash = profileHash(cloudName, cloudProgram)
+            val localHash = localProfile?.let { profileHash(it.name, it.program) }
+            val cloudChanged = !cloudName.isBlank() && !cloudProgram.isBlank() && cloudHash != lastSyncedHash
+            val localChanged = localHash != null && localHash != lastSyncedHash
 
             when {
                 cloudName.isBlank() || cloudProgram.isBlank() -> {
                     Result.failure(IllegalStateException("Profil online belum lengkap."))
                 }
-                cloudUpdatedAt > localUpdatedAt -> {
+                cloudChanged && !localChanged -> {
+                    val profile = UserProfile(cloudName, cloudProgram)
+                    user.updateProfile(
+                        UserProfileChangeRequest.Builder().setDisplayName(profile.name).build()
+                    ).await()
+                    userProfileRepository.saveProfileFromCloud(
+                        uid = user.uid,
+                        name = profile.name,
+                        program = profile.program,
+                        updatedAt = maxOf(cloudUpdatedAt, localUpdatedAt)
+                    )
+                    AuthDebugLog.d("PROFILE_SYNC cloud content changed: cloudHash wins")
+                    Result.success(profile)
+                }
+                localChanged && !cloudChanged -> {
+                    val cloudTimestamp = saveCloudProfile(user, localProfile!!)
+                    userProfileRepository.saveProfileFromCloud(
+                        uid = user.uid,
+                        name = localProfile.name,
+                        program = localProfile.program,
+                        updatedAt = cloudTimestamp
+                    )
+                    AuthDebugLog.d("PROFILE_SYNC local content changed: localHash wins")
+                    Result.success(localProfile)
+                }
+                cloudChanged && localChanged && cloudUpdatedAt > localUpdatedAt -> {
                     val profile = UserProfile(cloudName, cloudProgram)
                     user.updateProfile(
                         UserProfileChangeRequest.Builder().setDisplayName(profile.name).build()
@@ -266,10 +297,10 @@ class FirebaseAuthRepository @Inject constructor(
                         program = profile.program,
                         updatedAt = cloudUpdatedAt
                     )
-                    AuthDebugLog.d("PROFILE_SYNC cloud wins: cloudUpdatedAt=$cloudUpdatedAt localUpdatedAt=$localUpdatedAt")
+                    AuthDebugLog.d("PROFILE_SYNC both changed: cloud timestamp wins")
                     Result.success(profile)
                 }
-                localProfile != null && localUpdatedAt > cloudUpdatedAt -> {
+                localProfile != null && localChanged -> {
                     val cloudTimestamp = saveCloudProfile(user, localProfile)
                     userProfileRepository.saveProfileFromCloud(
                         uid = user.uid,
@@ -277,8 +308,18 @@ class FirebaseAuthRepository @Inject constructor(
                         program = localProfile.program,
                         updatedAt = cloudTimestamp
                     )
-                    AuthDebugLog.d("PROFILE_SYNC local wins: localUpdatedAt=$localUpdatedAt cloudUpdatedAt=$cloudUpdatedAt")
+                    AuthDebugLog.d("PROFILE_SYNC both changed: local timestamp wins")
                     Result.success(localProfile)
+                }
+                cloudUpdatedAt > localUpdatedAt -> {
+                    val profile = UserProfile(cloudName, cloudProgram)
+                    userProfileRepository.saveProfileFromCloud(
+                        uid = user.uid,
+                        name = profile.name,
+                        program = profile.program,
+                        updatedAt = cloudUpdatedAt
+                    )
+                    Result.success(profile)
                 }
                 localProfile != null -> {
                     Result.success(localProfile)
@@ -380,5 +421,12 @@ class FirebaseAuthRepository @Inject constructor(
         val cached = userProfileRepository.profile.first()
         if (cachedUid == user.uid && cached != null) return cached
         return firebaseFallbackProfile(user)
+    }
+
+    private fun profileHash(name: String, program: String): String {
+        val value = "${name.trim()}\u0000${program.trim()}"
+        return MessageDigest.getInstance("SHA-256")
+            .digest(value.toByteArray(Charsets.UTF_8))
+            .joinToString("") { byte -> "%02x".format(byte) }
     }
 }
