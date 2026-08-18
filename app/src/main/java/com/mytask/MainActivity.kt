@@ -14,18 +14,24 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.Dashboard
 import androidx.compose.material.icons.filled.MenuBook
+import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.Task
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
+import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
 import androidx.compose.runtime.Composable
@@ -36,8 +42,10 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
 import androidx.core.content.ContextCompat
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -476,13 +484,33 @@ private fun MyTaskMainContent(
     Scaffold(
         bottomBar = {
             if (!isSubScreen) {
-                NavigationBar {
-                    NavigationBarItem(selected = currentPage == 0, onClick = { scope.launch { pagerState.animateScrollToPage(0) } }, icon = { Icon(Icons.Default.Dashboard, "Dashboard") }, alwaysShowLabel = false)
-                    NavigationBarItem(selected = currentPage == 1, onClick = ::openTasks, icon = { Icon(Icons.Default.Task, "Tugas") }, alwaysShowLabel = false)
-                    NavigationBarItem(selected = currentPage == 2, onClick = ::openSchedule, icon = { Icon(Icons.Default.Schedule, "Jadwal") }, alwaysShowLabel = false)
-                    NavigationBarItem(selected = currentPage == 3, onClick = { scope.launch { pagerState.animateScrollToPage(3) } }, icon = { Icon(Icons.Default.CalendarMonth, "Kalender") }, alwaysShowLabel = false)
-                    NavigationBarItem(selected = currentPage == 4, onClick = { scope.launch { pagerState.animateScrollToPage(4) } }, icon = { Icon(Icons.Default.MenuBook, "Mata Kuliah") }, alwaysShowLabel = false)
-                    NavigationBarItem(selected = currentPage == 5, onClick = { scope.launch { pagerState.animateScrollToPage(5) } }, icon = { Icon(Icons.Default.Person, "Profile") }, alwaysShowLabel = false)
+                Surface(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
+                    color = MaterialTheme.colorScheme.surface,
+                    shadowElevation = 10.dp,
+                    tonalElevation = 3.dp
+                ) {
+                    NavigationBar(
+                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 4.dp),
+                        containerColor = MaterialTheme.colorScheme.surface,
+                        tonalElevation = 0.dp
+                    ) {
+                        val navigationColors = NavigationBarItemDefaults.colors(
+                            selectedIconColor = MaterialTheme.colorScheme.primary,
+                            unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                            selectedTextColor = MaterialTheme.colorScheme.primary,
+                            unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                            indicatorColor = MaterialTheme.colorScheme.primaryContainer
+                        )
+
+                        NavigationBarItem(selected = currentPage == 0, onClick = { scope.launch { pagerState.animateScrollToPage(0) } }, icon = { Icon(Icons.Default.Dashboard, "Dashboard") }, alwaysShowLabel = false, colors = navigationColors)
+                        NavigationBarItem(selected = currentPage == 1, onClick = ::openTasks, icon = { Icon(Icons.Default.Task, "Tugas") }, alwaysShowLabel = false, colors = navigationColors)
+                        NavigationBarItem(selected = currentPage == 2, onClick = ::openSchedule, icon = { Icon(Icons.Default.Schedule, "Jadwal") }, alwaysShowLabel = false, colors = navigationColors)
+                        NavigationBarItem(selected = currentPage == 3, onClick = { scope.launch { pagerState.animateScrollToPage(3) } }, icon = { Icon(Icons.Default.CalendarMonth, "Kalender") }, alwaysShowLabel = false, colors = navigationColors)
+                        NavigationBarItem(selected = currentPage == 4, onClick = { scope.launch { pagerState.animateScrollToPage(4) } }, icon = { Icon(Icons.Default.MenuBook, "Mata Kuliah") }, alwaysShowLabel = false, colors = navigationColors)
+                        NavigationBarItem(selected = currentPage == 5, onClick = { scope.launch { pagerState.animateScrollToPage(5) } }, icon = { Icon(Icons.Default.Person, "Profile") }, alwaysShowLabel = false, colors = navigationColors)
+                    }
                 }
             }
         }
@@ -539,6 +567,29 @@ private fun MyTaskMainContent(
                                 onEditProfile = {},
                                 onSaveDataOnline = onSaveDataOnline,
                                 onLogout = onLogout
+                            )
+                        }
+                    }
+                }
+
+                if (!isSubScreen && currentPage == 5) {
+                    Surface(
+                        modifier = Modifier
+                            .align(Alignment.TopEnd)
+                            .padding(top = 10.dp, end = 12.dp)
+                            .zIndex(4f),
+                        shape = CircleShape,
+                        color = MaterialTheme.colorScheme.surfaceVariant,
+                        shadowElevation = 6.dp,
+                        tonalElevation = 2.dp
+                    ) {
+                        IconButton(
+                            onClick = { navController.navigate(Screen.NotificationSettings.route) }
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Notifications,
+                                contentDescription = "Pengaturan notifikasi",
+                                tint = MaterialTheme.colorScheme.primary
                             )
                         }
                     }
