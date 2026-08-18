@@ -61,6 +61,10 @@ class FirebaseAuthRepository @Inject constructor(
     ): Result<UserProfile> {
         return try {
             AuthDebugLog.d("REGISTER start")
+            // Write the restore gate BEFORE Firebase creates the authenticated session.
+            // This prevents AuthState from exposing a usable account before restore is ready.
+            userProfileRepository.markCloudRestorePending()
+
             val user = auth.createUserWithEmailAndPassword(email.trim(), password).await().user
                 ?: error("Akun Firebase tidak berhasil dibuat.")
             cloudDataSyncRepository.clearLocalSessionData()
@@ -103,6 +107,9 @@ class FirebaseAuthRepository @Inject constructor(
     suspend fun login(email: String, password: String): Result<UserProfile> {
         return try {
             AuthDebugLog.d("EMAIL_LOGIN start")
+            // Establish the gate before FirebaseAuth can publish the new user through AuthState.
+            userProfileRepository.markCloudRestorePending()
+
             val user = auth.signInWithEmailAndPassword(email.trim(), password).await().user
                 ?: error("Akun tidak ditemukan.")
 
@@ -138,6 +145,9 @@ class FirebaseAuthRepository @Inject constructor(
     suspend fun signInWithGoogle(context: Context): Result<UserProfile> {
         return try {
             AuthDebugLog.d("GOOGLE_LOGIN start")
+            // Establish the restore gate before Google/Firebase authentication completes.
+            userProfileRepository.markCloudRestorePending()
+
             val credentialManager = CredentialManager.create(context)
             val googleIdOption = GetGoogleIdOption.Builder()
                 .setServerClientId(context.getString(com.mytask.R.string.default_web_client_id))
