@@ -273,9 +273,7 @@ private fun MyTaskApp(
             try {
                 cloudDataSyncRepository.uploadCurrentData(user.uid)
             } catch (error: Throwable) {
-                if (error is CloudDataSyncException) {
-                    onlineSaveMessage = error.message
-                }
+                onlineSaveMessage = error.message ?: "Sinkronisasi otomatis gagal."
             } finally {
                 isAutoSyncing = false
             }
