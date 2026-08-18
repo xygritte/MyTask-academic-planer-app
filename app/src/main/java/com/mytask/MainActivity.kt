@@ -147,6 +147,7 @@ private fun MyTaskApp(
     var isApplyingTemplate by remember { mutableStateOf(false) }
     var templateError by remember { mutableStateOf<String?>(null) }
     var isSavingOnline by remember { mutableStateOf(false) }
+    var isAutoSyncing by remember { mutableStateOf(false) }
     var onlineSaveMessage by remember { mutableStateOf<String?>(null) }
     var shouldShowTemplatePrompt by remember { mutableStateOf(false) }
     var isRefreshingConnectivity by remember { mutableStateOf(false) }
@@ -251,6 +252,36 @@ private fun MyTaskApp(
         }
     }
 
+    LaunchedEffect(
+        currentFirebaseUser?.uid,
+        syncReady,
+        networkAvailable,
+        restorePendingState,
+        shouldShowTemplatePrompt
+    ) {
+        val user = currentFirebaseUser
+        if (
+            user != null &&
+            syncReady &&
+            networkAvailable &&
+            !restorePendingState &&
+            !shouldShowTemplatePrompt &&
+            !isSavingOnline &&
+            !isAutoSyncing
+        ) {
+            isAutoSyncing = true
+            try {
+                cloudDataSyncRepository.uploadCurrentData(user.uid)
+            } catch (error: Throwable) {
+                if (error is CloudDataSyncException) {
+                    onlineSaveMessage = error.message
+                }
+            } finally {
+                isAutoSyncing = false
+            }
+        }
+    }
+
     if (minimumLoading) {
         LoadingScreen("Memulai MyTask...")
         return
@@ -266,12 +297,12 @@ private fun MyTaskApp(
             MyTaskMainContent(
                 profile = activeProfile,
                 canSaveOnline = currentFirebaseUser != null && networkAvailable,
-                isSavingOnline = isSavingOnline || !networkAvailable,
+                isSavingOnline = isSavingOnline || isAutoSyncing || !networkAvailable,
                 onlineSaveMessage = onlineSaveMessage,
                 authRepository = authRepository,
                 onSaveDataOnline = {
                     val user = currentFirebaseUser
-                    if (user != null && networkAvailable && !isSavingOnline) {
+                    if (user != null && networkAvailable && !isSavingOnline && !isAutoSyncing) {
                         scope.launch {
                             isSavingOnline = true
                             onlineSaveMessage = null
@@ -283,11 +314,27 @@ private fun MyTaskApp(
                     }
                 },
                 onRefreshNetwork = {
-                    if (!isRefreshingConnectivity) {
+                    if (!isRefreshingConnectivity && !isSavingOnline && !isAutoSyncing) {
                         scope.launch {
                             isRefreshingConnectivity = true
                             networkRefreshKey += 1
                             delay(550)
+
+                            val refreshedOnline = isNetworkAvailable(context)
+                            val user = currentFirebaseUser
+                            if (refreshedOnline && user != null) {
+                                isAutoSyncing = true
+                                onlineSaveMessage = null
+                                try {
+                                    cloudDataSyncRepository.uploadCurrentData(user.uid)
+                                    onlineSaveMessage = "Data berhasil disinkronkan."
+                                } catch (error: Throwable) {
+                                    onlineSaveMessage = error.message ?: "Gagal menyinkronkan data."
+                                } finally {
+                                    isAutoSyncing = false
+                                }
+                            }
+
                             isRefreshingConnectivity = false
                         }
                     }
@@ -304,7 +351,7 @@ private fun MyTaskApp(
                 },
                 onLogout = {
                     val user = currentFirebaseUser
-                    if (networkAvailable && !isSavingOnline) {
+                    if (networkAvailable && !isSavingOnline && !isAutoSyncing) {
                         scope.launch {
                             isSavingOnline = true
                             onlineSaveMessage = null
