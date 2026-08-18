@@ -15,5 +15,8 @@ data class CourseEntity(
 
     val lecturer: String = "",
 
-    val room: String = ""
+    val room: String = "",
+
+    /** Last local change timestamp used for entity-level cloud merge. */
+    val updatedAt: Long = System.currentTimeMillis()
 )
