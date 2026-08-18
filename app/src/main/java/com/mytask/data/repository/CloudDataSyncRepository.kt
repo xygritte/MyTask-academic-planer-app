@@ -112,9 +112,8 @@ class CloudDataSyncRepository @Inject constructor(
 
     /**
      * Bidirectional sync used by startup, pull-to-refresh, manual save, and logout.
-     * The latest known cloud version wins when it is newer than the last synced version.
-     * Local changes win when the local synced version is newer. A changed cloud snapshot
-     * with the same version is accepted only when the local workspace has not changed.
+     * updatedAt is the primary version signal. A content-hash fallback also detects
+     * manual Firebase edits where the timestamp was not changed.
      */
     suspend fun uploadCurrentData(uid: String) {
         require(uid.isNotBlank())
@@ -123,20 +122,18 @@ class CloudDataSyncRepository @Inject constructor(
         }
 
         val localJson = databaseJson.first()
-        val localHash = sha256(localJson)
+        val localHash = syncDataHash(localJson)
         val lastSyncedUpdatedAt = userProfileRepository.lastCloudUpdatedAt.first()
-        val lastSyncedHash = userProfileRepository.lastCloudDataHash.first().orEmpty()
+        val lastSnapshotHash = readLastLocalSnapshotHash(uid)
 
         val snapshot = withTimeout(CLOUD_TIMEOUT_MS) { document(uid).get().await() }
         val cloudJson = snapshot.getString("dataJson")
         val cloudUpdatedAt = snapshot.getLong("updatedAt") ?: 0L
         val cloudExists = snapshot.exists() && !cloudJson.isNullOrBlank()
-        val cloudHash = cloudJson?.let(::sha256).orEmpty()
+        val cloudHash = cloudJson?.let(::syncDataHash).orEmpty()
 
         if (!cloudExists) {
-            if (localHash == lastSyncedHash && lastSyncedHash.isNotBlank()) {
-                AuthDebugLog.d("CLOUD_SYNC unchanged but cloud document is empty; publishing last known local snapshot")
-            }
+            AuthDebugLog.d("CLOUD_SYNC cloud document missing -> publish local workspace")
             uploadJson(uid, localJson)
             return
         }
@@ -153,8 +150,8 @@ class CloudDataSyncRepository @Inject constructor(
                 return
             }
 
-            if (localHash == lastSyncedHash) {
-                AuthDebugLog.d("CLOUD_SYNC cloud content changed without newer timestamp; local unchanged -> download")
+            if (lastSnapshotHash != null && localHash == lastSnapshotHash) {
+                AuthDebugLog.d("CLOUD_SYNC cloud content changed at same timestamp; local unchanged -> download")
                 applyCloudSnapshot(uid, cloudJson, cloudUpdatedAt)
                 return
             }
@@ -165,9 +162,16 @@ class CloudDataSyncRepository @Inject constructor(
             )
         }
 
-        // Cloud timestamp is older than the last synchronized version. The local snapshot
-        // represents the newer known version, so publish it again as a new cloud version.
-        AuthDebugLog.d("CLOUD_SYNC cloud older: cloud=$cloudUpdatedAt localLast=$lastSyncedUpdatedAt -> upload local")
+        // Cloud timestamp is older than the last synchronized version. If the local
+        // workspace has not changed since that version, republish it as the newest cloud version.
+        if (lastSnapshotHash != null && localHash != lastSnapshotHash) {
+            saveConflictBackup(uid, localJson)
+            throw CloudSyncConflictException(
+                "Data online kembali ke versi lebih lama sementara data lokal juga berubah. Sinkronisasi dihentikan untuk keamanan data."
+            )
+        }
+
+        AuthDebugLog.d("CLOUD_SYNC cloud older: cloud=$cloudUpdatedAt localLast=$lastSyncedUpdatedAt -> restore latest local")
         uploadLatestLocalSnapshot(uid, localJson, localHash, cloudUpdatedAt)
     }
 
@@ -217,14 +221,8 @@ class CloudDataSyncRepository @Inject constructor(
             throw IllegalStateException("Tidak ada koneksi internet. Hubungkan internet lalu coba lagi.")
         }
 
-        val dataHash = sha256(json)
+        val dataHash = syncDataHash(json)
         val lastSyncedUpdatedAt = userProfileRepository.lastCloudUpdatedAt.first()
-        val lastSyncedHash = userProfileRepository.lastCloudDataHash.first().orEmpty()
-
-        if (lastSyncedHash == dataHash && lastSyncedHash.isNotBlank()) {
-            AuthDebugLog.d("CLOUD_UPLOAD skipped unchanged snapshot: uid=${AuthDebugLog.uid(uid)} updatedAt=$lastSyncedUpdatedAt")
-            return
-        }
 
         try {
             val newUpdatedAt = withTimeout(CLOUD_TIMEOUT_MS) {
@@ -312,7 +310,7 @@ class CloudDataSyncRepository @Inject constructor(
 
         replaceLocalDatabase(cloudJson)
         saveLocalJson(uid, cloudJson)
-        userProfileRepository.saveCloudSyncState(cloudUpdatedAt, sha256(cloudJson))
+        userProfileRepository.saveCloudSyncState(cloudUpdatedAt, syncDataHash(cloudJson))
         NotificationHelper.cancelAllAppNotifications(context)
         ReminderScheduler.cancel(context)
         ReminderScheduler.initialize(context)
@@ -354,9 +352,26 @@ class CloudDataSyncRepository @Inject constructor(
             capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)
     }
 
+    private fun syncDataHash(value: String): String {
+        return try {
+            val normalized = JSONObject(value).apply {
+                remove("createdAt")
+            }.toString()
+            sha256(normalized)
+        } catch (_: Throwable) {
+            sha256(value)
+        }
+    }
+
     private fun sha256(value: String): String {
         val digest = MessageDigest.getInstance("SHA-256").digest(value.toByteArray(Charsets.UTF_8))
         return digest.joinToString("") { byte -> "%02x".format(byte) }
+    }
+
+    private fun readLastLocalSnapshotHash(uid: String): String? {
+        val file = localFile(uid)
+        if (!file.exists()) return null
+        return runCatching { syncDataHash(file.readText(Charsets.UTF_8)) }.getOrNull()
     }
 
     private fun buildJson(courses: List<CourseEntity>, tasks: List<TaskEntity>, schedules: List<ScheduleEntity>): String {
