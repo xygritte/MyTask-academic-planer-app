@@ -1,6 +1,9 @@
 package com.mytask.data.repository
 
+import androidx.room.withTransaction
+import com.mytask.data.local.MyTaskDatabase
 import com.mytask.data.local.dao.TaskDao
+import com.mytask.data.local.entity.SyncTombstoneEntity
 import com.mytask.data.local.entity.TaskEntity
 import kotlinx.coroutines.flow.Flow
 import java.util.Calendar
@@ -10,7 +13,8 @@ import javax.inject.Singleton
 
 @Singleton
 class TaskRepository @Inject constructor(
-    private val taskDao: TaskDao
+    private val taskDao: TaskDao,
+    private val database: MyTaskDatabase
 ) {
 
     fun getAllTasks(): Flow<List<TaskEntity>> = taskDao.getAllTasks()
@@ -46,9 +50,18 @@ class TaskRepository @Inject constructor(
         return taskDao.getPendingTasksBetween(now, end)
     }
 
-    suspend fun addTask(task: TaskEntity): Long = taskDao.insert(task)
+    suspend fun addTask(task: TaskEntity): Long =
+        taskDao.insert(task.copy(updatedAt = System.currentTimeMillis()))
 
-    suspend fun updateTask(task: TaskEntity) = taskDao.update(task)
+    suspend fun updateTask(task: TaskEntity) =
+        taskDao.update(task.copy(updatedAt = System.currentTimeMillis()))
 
-    suspend fun deleteTask(task: TaskEntity) = taskDao.delete(task)
+    suspend fun deleteTask(task: TaskEntity) {
+        database.withTransaction {
+            taskDao.delete(task)
+            database.syncTombstoneDao().upsert(
+                SyncTombstoneEntity("task", task.id, System.currentTimeMillis())
+            )
+        }
+    }
 }
