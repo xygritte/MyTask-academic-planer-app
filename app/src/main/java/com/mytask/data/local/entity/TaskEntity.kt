@@ -26,5 +26,8 @@ data class TaskEntity(
      * Timestamp of the most recent transition into the completed state.
      * Null means the task has never been completed (or predates this field).
      */
-    val completedAt: Date? = null
+    val completedAt: Date? = null,
+
+    /** Last local change timestamp used for entity-level cloud merge. */
+    val updatedAt: Long = System.currentTimeMillis()
 )
