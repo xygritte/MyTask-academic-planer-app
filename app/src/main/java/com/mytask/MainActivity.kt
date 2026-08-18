@@ -297,7 +297,7 @@ private fun MyTaskApp(
         val templateUid = sessionUid ?: currentFirebaseUser?.uid ?: "guest"
         Box(modifier = Modifier.fillMaxSize()) {
             MyTaskMainContent(
-                profile = activeProfile,
+                profile = profile,
                 canSaveOnline = currentFirebaseUser != null && networkAvailable,
                 isSavingOnline = isSavingOnline || isAutoSyncing || !networkAvailable,
                 onlineSaveMessage = onlineSaveMessage,
@@ -393,54 +393,93 @@ private fun MyTaskApp(
 
             if (shouldShowTemplatePrompt && !accountLoading) {
                 AcademicTemplateDialog(
-                    uid = templateUid,
-                    importer = templateDataImporter,
-                    onApplyStarted = {
-                        isApplyingTemplate = true
-                        templateError = null
+                    isApplying = isApplyingTemplate,
+                    errorMessage = templateError,
+                    onSkip = {
+                        if (!isApplyingTemplate) {
+                            scope.launch {
+                                templatePreferenceRepository.markPromptShown(templateUid)
+                                shouldShowTemplatePrompt = false
+                            }
+                        }
                     },
-                    onApplied = {
-                        isApplyingTemplate = false
-                        shouldShowTemplatePrompt = false
-                        onlineSaveMessage = null
-                    },
-                    onError = { error ->
-                        isApplyingTemplate = false
-                        templateError = error.message ?: "Template gagal diterapkan."
+                    onApply = {
+                        if (!isApplyingTemplate) {
+                            scope.launch {
+                                isApplyingTemplate = true
+                                templateError = null
+                                runCatching { templateDataImporter.importTemplate() }
+                                    .onSuccess {
+                                        templatePreferenceRepository.markPromptShown(templateUid)
+                                        shouldShowTemplatePrompt = false
+                                    }
+                                    .onFailure { error -> templateError = error.message ?: "Template gagal diterapkan." }
+                                isApplyingTemplate = false
+                            }
+                        }
                     }
                 )
-            }
-
-            if (isApplyingTemplate) {
-                LoadingScreen("Menerapkan template...")
             }
         }
         return
     }
 
-    if (accountLoading || restorePendingState) {
-        LoadingScreen("Memulihkan data akun...")
+    if (currentFirebaseUser != null) {
+        LoadingScreen(
+            if (restorePendingState) "Menyiapkan akun dan memulihkan data..."
+            else "Menyiapkan akun..."
+        )
         return
     }
 
-    if (currentFirebaseUser == null && sessionUid == null) {
-        LoginScreen(
-            onLoggedIn = { profile ->
-                sessionProfile = profile
-                sessionUid = currentFirebaseUser?.uid
+    if (currentLocalProfile != null && sessionUid == "guest") {
+        MyTaskMainContent(
+            profile = currentLocalProfile,
+            canSaveOnline = false,
+            isSavingOnline = false,
+            onlineSaveMessage = null,
+            authRepository = authRepository,
+            onSaveDataOnline = {},
+            onRefreshNetwork = {
+                if (!isRefreshingConnectivity) {
+                    scope.launch {
+                        isRefreshingConnectivity = true
+                        networkRefreshKey += 1
+                        delay(550)
+                        isRefreshingConnectivity = false
+                    }
+                }
             },
-            onGuest = { profile ->
-                sessionProfile = profile
-                sessionUid = "guest"
-                syncReady = true
+            isRefreshingConnectivity = isRefreshingConnectivity,
+            onLoggedOut = {
+                sessionProfile = null
+                sessionUid = null
+                restorePendingState = false
+                syncReady = false
+                shouldShowTemplatePrompt = false
+            },
+            onLogout = {
+                if (networkAvailable) {
+                    scope.launch {
+                        authRepository.clearLocalSession()
+                    }
+                }
             }
         )
         return
     }
 
-    LoadingScreen("Menyiapkan workspace...")
+    if (isOnline) {
+        LoginScreen(authRepository = authRepository)
+    } else {
+        OfflineLoginScreen(
+            authRepository = authRepository,
+            onRefresh = { networkRefreshKey += 1 }
+        )
+    }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun MyTaskMainContent(
     profile: UserProfile,
@@ -454,102 +493,174 @@ private fun MyTaskMainContent(
     onLoggedOut: () -> Unit,
     onLogout: () -> Unit
 ) {
-    val context = LocalContext.current
     val navController = rememberNavController()
+    val scope = rememberCoroutineScope()
+    val courseViewModel: CourseViewModel = hiltViewModel()
+    val courses by courseViewModel.courses.collectAsState()
+    val hasCourses = courses.isNotEmpty()
+
+    var showAddDataDialog by remember { mutableStateOf(false) }
+    var scheduleAddRequestKey by remember { mutableStateOf(0) }
+    val pagerState = rememberPagerState(initialPage = 0, pageCount = { 6 })
+    val currentPage = pagerState.currentPage
     val backStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = backStackEntry?.destination?.route
-    val currentScreen = Screen.fromRoute(currentRoute)
-    val mainRoutes = remember {
-        setOf(
-            Screen.Dashboard.route,
-            Screen.Tasks.route,
-            Screen.Schedule.route,
-            Screen.Calendar.route,
-            Screen.Courses.route,
-            Screen.Profile.route
-        )
+    val isSubScreen = currentRoute == Screen.AddTask.route ||
+        currentRoute == Screen.AddCourse.route ||
+        currentRoute == Screen.NotificationSettings.route ||
+        currentRoute == Screen.Backup.route
+
+    fun openAddDataDialog() { showAddDataDialog = true }
+    fun openTasks() {
+        if (hasCourses) scope.launch { pagerState.animateScrollToPage(1) }
+        else openAddDataDialog()
     }
-    val showGlobalNotificationButton = currentRoute in mainRoutes
+    fun openSchedule() {
+        if (hasCourses) scope.launch { pagerState.animateScrollToPage(2) }
+        else openAddDataDialog()
+    }
+    fun openAddTask() {
+        showAddDataDialog = false
+        if (hasCourses) navController.navigate("add_task?taskId=-1")
+    }
+    fun openAddCourse() {
+        showAddDataDialog = false
+        navController.navigate("add_course?courseId=-1")
+    }
+    fun openAddSchedule() {
+        showAddDataDialog = false
+        if (hasCourses) {
+            scheduleAddRequestKey += 1
+            scope.launch { pagerState.animateScrollToPage(2) }
+        }
+    }
+
+    val pullRefreshState = rememberPullToRefreshState()
 
     Scaffold(
-        modifier = Modifier.fillMaxSize(),
-        topBar = {
-            if (showGlobalNotificationButton) {
+        bottomBar = {
+            if (!isSubScreen) {
                 Surface(
                     modifier = Modifier.fillMaxWidth(),
-                    color = MaterialTheme.colorScheme.background
+                    shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
+                    color = MaterialTheme.colorScheme.surface,
+                    shadowElevation = 10.dp,
+                    tonalElevation = 3.dp
                 ) {
-                    Box(
+                    NavigationBar(
+                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 4.dp),
+                        containerColor = MaterialTheme.colorScheme.surface,
+                        tonalElevation = 0.dp
+                    ) {
+                        val navigationColors = NavigationBarItemDefaults.colors(
+                            selectedIconColor = MaterialTheme.colorScheme.primary,
+                            unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                            selectedTextColor = MaterialTheme.colorScheme.primary,
+                            unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                            indicatorColor = MaterialTheme.colorScheme.primaryContainer
+                        )
+
+                        NavigationBarItem(selected = currentPage == 0, onClick = { scope.launch { pagerState.animateScrollToPage(0) } }, icon = { Icon(Icons.Default.Dashboard, "Dashboard") }, alwaysShowLabel = false, colors = navigationColors)
+                        NavigationBarItem(selected = currentPage == 1, onClick = ::openTasks, icon = { Icon(Icons.Default.Task, "Tugas") }, alwaysShowLabel = false, colors = navigationColors)
+                        NavigationBarItem(selected = currentPage == 2, onClick = ::openSchedule, icon = { Icon(Icons.Default.Schedule, "Jadwal") }, alwaysShowLabel = false, colors = navigationColors)
+                        NavigationBarItem(selected = currentPage == 3, onClick = { scope.launch { pagerState.animateScrollToPage(3) } }, icon = { Icon(Icons.Default.CalendarMonth, "Kalender") }, alwaysShowLabel = false, colors = navigationColors)
+                        NavigationBarItem(selected = currentPage == 4, onClick = { scope.launch { pagerState.animateScrollToPage(4) } }, icon = { Icon(Icons.Default.MenuBook, "Mata Kuliah") }, alwaysShowLabel = false, colors = navigationColors)
+                        NavigationBarItem(selected = currentPage == 5, onClick = { scope.launch { pagerState.animateScrollToPage(5) } }, icon = { Icon(Icons.Default.Person, "Profile") }, alwaysShowLabel = false, colors = navigationColors)
+                    }
+                }
+            }
+        }
+    ) { paddingValues ->
+        PullToRefreshBox(
+            state = pullRefreshState,
+            isRefreshing = isRefreshingConnectivity,
+            onRefresh = onRefreshNetwork,
+            modifier = Modifier.fillMaxSize()
+        ) {
+            Box(Modifier.fillMaxSize()) {
+                NavGraph(
+                    navController = navController,
+                    paddingValues = paddingValues,
+                    modifier = Modifier.fillMaxSize().zIndex(if (isSubScreen) 10f else 0f)
+                )
+
+                if (!isSubScreen) {
+                    HorizontalPager(
+                        state = pagerState,
+                        userScrollEnabled = hasCourses,
+                        modifier = Modifier.fillMaxSize().padding(paddingValues).zIndex(1f),
+                        beyondViewportPageCount = 1
+                    ) { page ->
+                        when (page) {
+                            0 -> DashboardScreen(
+                                onCoursesClick = { scope.launch { pagerState.animateScrollToPage(4) } },
+                                onTasksClick = ::openTasks,
+                                onScheduleClick = ::openSchedule,
+                                onCalendarClick = { scope.launch { pagerState.animateScrollToPage(3) } },
+                                onAddDataClick = ::openAddDataDialog
+                            )
+                            1 -> TaskListScreen(
+                                onAddTask = ::openAddDataDialog,
+                                onEditTask = { id ->
+                                    if (hasCourses) navController.navigate("add_task?taskId=$id")
+                                    else openAddDataDialog()
+                                }
+                            )
+                            2 -> ScheduleScreen(addRequestKey = scheduleAddRequestKey, onAddData = ::openAddDataDialog)
+                            3 -> CalendarScreen(onBack = { scope.launch { if (currentPage > 0) pagerState.animateScrollToPage(currentPage - 1) } })
+                            4 -> CourseListScreen(
+                                onAddCourse = ::openAddDataDialog,
+                                onEditCourse = { id -> navController.navigate("add_course?courseId=$id") }
+                            )
+                            5 -> ProfileScreen(
+                                profile = profile,
+                                canSaveOnline = canSaveOnline,
+                                isSavingOnline = isSavingOnline,
+                                onlineSaveMessage = onlineSaveMessage,
+                                onBack = { scope.launch { if (currentPage > 0) pagerState.animateScrollToPage(currentPage - 1) } },
+                                onNotificationSettings = { navController.navigate(Screen.NotificationSettings.route) },
+                                onBackupData = { navController.navigate(Screen.Backup.route) },
+                                onEditProfile = {},
+                                onSaveDataOnline = onSaveDataOnline,
+                                onLogout = onLogout
+                            )
+                        }
+                    }
+                }
+
+                if (!isSubScreen) {
+                    Surface(
                         modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 16.dp, vertical = 8.dp)
+                            .align(Alignment.TopEnd)
+                            .padding(top = 10.dp, end = 12.dp)
+                            .zIndex(4f),
+                        shape = CircleShape,
+                        color = MaterialTheme.colorScheme.surfaceVariant,
+                        shadowElevation = 6.dp,
+                        tonalElevation = 2.dp
                     ) {
                         IconButton(
-                            onClick = { navController.navigate(Screen.NotificationSettings.route) },
-                            modifier = Modifier
-                                .align(Alignment.CenterEnd)
-                                .zIndex(1f)
+                            onClick = { navController.navigate(Screen.NotificationSettings.route) }
                         ) {
                             Icon(
-                                imageVector = Icons.Filled.Notifications,
+                                imageVector = Icons.Default.Notifications,
                                 contentDescription = "Pengaturan notifikasi",
-                                tint = MaterialTheme.colorScheme.onBackground
+                                tint = MaterialTheme.colorScheme.primary
                             )
                         }
                     }
                 }
             }
-        },
-        bottomBar = {
-            NavigationBar(
-                modifier = Modifier
-                    .fillMaxWidth(),
-                containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.96f),
-                tonalElevation = 8.dp
-            ) {
-                val items = listOf(
-                    Screen.Dashboard to Icons.Filled.Dashboard,
-                    Screen.Tasks to Icons.Filled.Task,
-                    Screen.Schedule to Icons.Filled.Schedule,
-                    Screen.Calendar to Icons.Filled.CalendarMonth,
-                    Screen.Courses to Icons.Filled.MenuBook,
-                    Screen.Profile to Icons.Filled.Person
-                )
-                items.forEach { (screen, icon) ->
-                    NavigationBarItem(
-                        selected = currentScreen == screen,
-                        onClick = {
-                            navController.navigate(screen.route) {
-                                launchSingleTop = true
-                                restoreState = true
-                                popUpTo(Screen.Dashboard.route) { saveState = true }
-                            }
-                        },
-                        icon = { Icon(icon, contentDescription = screen.label) },
-                        label = null,
-                        colors = NavigationBarItemDefaults.colors(
-                            indicatorColor = MaterialTheme.colorScheme.primaryContainer,
-                            selectedIconColor = MaterialTheme.colorScheme.onPrimaryContainer,
-                            unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    )
-                }
-            }
         }
-    ) { paddingValues ->
-        NavGraph(
-            navController = navController,
-            modifier = Modifier.padding(paddingValues),
-            profile = profile,
-            authRepository = authRepository,
-            canSaveOnline = canSaveOnline,
-            isSavingOnline = isSavingOnline,
-            onlineSaveMessage = onlineSaveMessage,
-            onSaveDataOnline = onSaveDataOnline,
-            onRefreshNetwork = onRefreshNetwork,
-            isRefreshingConnectivity = isRefreshingConnectivity,
-            onLoggedOut = onLoggedOut,
-            onLogout = onLogout
-        )
+
+        if (showAddDataDialog) {
+            AddDataDialog(
+                hasCourses = hasCourses,
+                onDismiss = { showAddDataDialog = false },
+                onAddTask = ::openAddTask,
+                onAddSchedule = ::openAddSchedule,
+                onAddCourse = ::openAddCourse
+            )
+        }
     }
 }
