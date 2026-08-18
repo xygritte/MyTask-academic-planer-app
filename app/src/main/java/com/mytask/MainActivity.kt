@@ -135,9 +135,7 @@ private fun MyTaskApp(
     val currentLocalProfile = localProfile
 
     var networkRefreshKey by remember { mutableStateOf(0) }
-    // App-shell availability: an established authenticated session stays usable offline.
     val isOnline = rememberNetworkAvailable(context, networkRefreshKey)
-    // Real network availability is used only for operations that explicitly require the internet.
     val networkAvailable = isNetworkAvailable(context)
 
     var sessionProfile by remember { mutableStateOf<UserProfile?>(null) }
@@ -175,8 +173,6 @@ private fun MyTaskApp(
         }
     }
 
-    // Authenticated users stay in their local Room workspace when the network is lost.
-    // A brand-new login still requires online cloud restore before entering the workspace.
     LaunchedEffect(currentFirebaseUser?.uid, isOnline) {
         val user = currentFirebaseUser
 
@@ -249,7 +245,6 @@ private fun MyTaskApp(
                 runCatching { authRepository.clearLocalSession() }
             }
         } else {
-            // No cloud restore is pending: use the already persisted Room workspace.
             shouldShowTemplatePrompt = false
             syncReady = true
             accountLoading = false
@@ -574,7 +569,7 @@ private fun MyTaskMainContent(
                     }
                 }
 
-                if (!isSubScreen && currentPage == 5) {
+                if (!isSubScreen) {
                     Surface(
                         modifier = Modifier
                             .align(Alignment.TopEnd)
