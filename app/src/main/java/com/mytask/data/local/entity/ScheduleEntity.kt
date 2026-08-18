@@ -25,5 +25,7 @@ data class ScheduleEntity(
     val endMinutes: Int,
     val room: String = "",
     /** JSON array containing all time ranges for this schedule. */
-    val timeRangesJson: String = ""
+    val timeRangesJson: String = "",
+    /** Last local change timestamp used for entity-level cloud merge. */
+    val updatedAt: Long = System.currentTimeMillis()
 )
