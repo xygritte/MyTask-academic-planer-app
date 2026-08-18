@@ -1,6 +1,8 @@
 package com.mytask.data.repository
 
 import android.content.Context
+import android.net.ConnectivityManager
+import android.net.NetworkCapabilities
 import androidx.room.withTransaction
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
@@ -31,6 +33,8 @@ import java.security.MessageDigest
 import java.util.Date
 import javax.inject.Inject
 import javax.inject.Singleton
+
+class CloudSyncConflictException(message: String = "Data online berubah saat sinkronisasi.") : IllegalStateException(message)
 
 /** Offline-first cloud synchronization using entity-level last-write-wins. */
 @Singleton
@@ -65,7 +69,6 @@ class CloudDataSyncRepository @Inject constructor(
         database.scheduleDao().getAllSchedules()
     ) { courses, tasks, schedules -> buildDataJson(courses, tasks, schedules) }
 
-    /** Login restore is cloud-authoritative; it never uploads an old local account into a new account. */
     suspend fun syncOnLogin(uid: String): Boolean {
         require(uid.isNotBlank())
         ensureNetwork()
@@ -95,7 +98,6 @@ class CloudDataSyncRepository @Inject constructor(
         }
     }
 
-    /** Explicit cloud restore used by recovery flows. */
     suspend fun resyncFromCloud(uid: String): Boolean {
         require(uid.isNotBlank())
         ensureNetwork()
@@ -115,12 +117,11 @@ class CloudDataSyncRepository @Inject constructor(
         return true
     }
 
-    /** Bidirectional entity-level LWW sync for startup, refresh, manual save, and logout. */
     suspend fun uploadCurrentData(uid: String) {
         require(uid.isNotBlank())
         ensureNetwork()
 
-        repeat(2) { attempt ->
+        for (attempt in 0..1) {
             val local = readLocalSnapshot()
             val remoteDocument = withTimeout(CLOUD_TIMEOUT_MS) { document(uid).get().await() }
             val cloudJson = remoteDocument.getString("dataJson")
@@ -131,8 +132,9 @@ class CloudDataSyncRepository @Inject constructor(
                 return
             }
 
-            val merged = mergeSnapshots(local, parseSnapshot(cloudJson))
-            if (snapshotsEqual(merged, parseSnapshot(cloudJson))) {
+            val remote = parseSnapshot(cloudJson)
+            val merged = mergeSnapshots(local, remote)
+            if (snapshotsEqual(merged, remote)) {
                 replaceLocalDatabase(merged)
                 val mergedJson = buildSyncJson(merged)
                 saveLocalJson(uid, mergedJson)
@@ -152,7 +154,6 @@ class CloudDataSyncRepository @Inject constructor(
         }
     }
 
-    /** Compatibility API: merge imported JSON with cloud rather than overwriting unrelated entities. */
     suspend fun uploadJson(uid: String, json: String) {
         require(uid.isNotBlank())
         ensureNetwork()
@@ -239,12 +240,10 @@ class CloudDataSyncRepository @Inject constructor(
                 bestDelete > bestUpdate -> null
                 localItem != null && cloudItem == null -> localItem
                 cloudItem != null && localItem == null -> cloudItem
-                localItem != null && cloudItem != null -> {
-                    when {
-                        localTime > cloudTime -> localItem
-                        cloudTime > localTime -> cloudItem
-                        else -> cloudItem
-                    }
+                localItem != null && cloudItem != null -> when {
+                    localTime > cloudTime -> localItem
+                    cloudTime > localTime -> cloudItem
+                    else -> cloudItem
                 }
                 else -> null
             }
@@ -377,7 +376,9 @@ class CloudDataSyncRepository @Inject constructor(
             val legacyEndMinutes = if (item.has("endMinutes")) item.optInt("endMinutes") else legacyEnd.toMinuteOfDayOrNull() ?: -1
             val ranges = when {
                 item.has("timeRanges") -> when (val value = item.get("timeRanges")) {
-                    is JSONArray -> buildList { for (rangeIndex in 0 until value.length()) ScheduleTimeRange.fromJson(value.getJSONObject(rangeIndex))?.let(::add) }
+                    is JSONArray -> buildList {
+                        for (rangeIndex in 0 until value.length()) ScheduleTimeRange.fromJson(value.getJSONObject(rangeIndex))?.let(::add)
+                    }
                     is String -> value.toScheduleTimeRangesOrNull() ?: emptyList()
                     else -> emptyList()
                 }
@@ -398,10 +399,7 @@ class CloudDataSyncRepository @Inject constructor(
 
     private fun saveLocalJson(uid: String, json: String) { localFile(uid).writeText(json, Charsets.UTF_8) }
 
-    private fun localFile(uid: String): File {
-        val safeUid = uid.replace(Regex("[^A-Za-z0-9._-]"), "_")
-        return File(context.filesDir, "mytask_data_$safeUid.json")
-    }
+    private fun localFile(uid: String): File { return File(context.filesDir, "mytask_data_${uid.replace(Regex("[^A-Za-z0-9._-]"), "_")}.json") }
 
     private fun saveConflictBackup(uid: String, json: String) {
         val safeUid = uid.replace(Regex("[^A-Za-z0-9._-]"), "_")
